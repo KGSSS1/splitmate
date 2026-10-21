@@ -19,11 +19,14 @@ import { resendConfirmation, signIn } from "@/server/actions/auth";
 type Values = z.input<typeof signInSchema>;
 
 const LINK_ERROR = "That link is invalid or has expired. Log in, or request a new link.";
+const BROWSER_ERROR =
+  "That link was opened in a different browser from the one you used. If you were confirming your email, it's confirmed: log in. If you were resetting your password, request a new link and open it in the same browser.";
 
 export function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? undefined;
-  const linkError = searchParams.get("error") === "link" ? LINK_ERROR : null;
+  const errorParam = searchParams.get("error");
+  const linkError = errorParam === "link" ? LINK_ERROR : errorParam === "browser" ? BROWSER_ERROR : null;
 
   const form = useForm<Values, unknown, z.output<typeof signInSchema>>({
     resolver: zodResolver(signInSchema),
