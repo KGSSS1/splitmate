@@ -14,6 +14,8 @@ export const ROUTES = {
   groups: "/groups",
   newGroup: "/groups/new",
   invite: "/invite",
+  expenses: "/expenses",
+  newExpense: "/expenses/new",
 } as const;
 
 /**

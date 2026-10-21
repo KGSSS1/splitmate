@@ -160,5 +160,24 @@ Rejected and cancelled are final. Completing twice is an invalid transition, so 
 | Email invitations | `createEmailInvite` | Single-use and bound to the email. No email is sent by the app (SPEC §15): the inviter gets the link plus a `mailto:` draft. Existing users also see it under "Invitations for you" on the Groups page (`my_group_invitations`). |
 | Leave / remove | Group page | The buttons appear only when the balance is zero in every currency, and the RPCs enforce it again (SM409). |
 
-- **Group pages:** tabs are Members (`/groups/[id]`) and Settings (`/groups/[id]/settings`). Expenses and balances tabs come in M5/M6. A former member sees only the header and a notice.
+- **Group pages:** tabs are Expenses (`/groups/[id]`, since M5), Members (`/groups/[id]/members`) and Settings (`/groups/[id]/settings`). A balances tab comes in M6. A former member sees only the header and a notice.
 - **Nav and dynamic routes:** the nav reads `usePathname()` inside `<Suspense>` (`WithPathname` in `app-nav.tsx`). Otherwise routes with dynamic segments could not prerender their static shell.
+
+# Expenses (M5)
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Form values → split | `src/lib/expenses/resolve.ts` | `resolveExpense(values)` takes the form exactly as typed (decimal strings) and returns the total, payers, shares (with rounding units), basis points / weights and pairwise debts, all from `src/lib/accounting`. Otherwise it returns field-level issues such as `people.1.exact` or `payers`. It is deterministic. The browser uses it for the live preview, and the server runs it again from the same strings. |
+| One schema | `src/lib/validation/expenses.ts` | `expenseFormSchema` checks the structure and then calls `resolveExpense` in `superRefine`, so the form and the Server Action reject the same things. It adds one check of its own: a direct expense must involve both friends. |
+| RPC payload | `src/lib/expenses/payload.ts` | `buildExpensePayload` produces the snake_case `p_payers` / `p_participants` / `p_ledger_entries` / `p_items` that `create_expense` and `update_expense` validate. Item assignments follow the people's entry order. |
+| Server Actions | `src/server/actions/expenses.ts` | `createExpense` (idempotency key from the form, created once per form and reused on retry), `updateExpense` (expected version; a stale one is SM409), `cancelExpense`, `addComment`, `deleteComment` (soft delete). |
+| Reads | `src/server/expenses.ts` | `getExpenseFormOptions` returns groups with current members in join order, plus friends. `getExpense` returns the current version, items, history from `audit_events`, comments, and whether the caller may change or comment on it (mirroring `lock_expense_for_change` / `can_edit_expense`). `listGroupExpenses` pages 20 at a time and includes cancelled expenses, labelled. `listDirectExpenses` lists direct expenses with one friend. |
+| History | `src/lib/expenses/history.ts` | Parses the `expense_snapshot` JSON in audit rows defensively. `describeChanges` lists what changed (description, amount, date, category, split, paid by, shares) with before and after values. |
+
+- **Pages:**
+  - `/expenses/new`: `?group=` or `?friend=` preselects where the expense goes; `?from=` duplicates an expense, dated today.
+  - `/expenses/[id]`: detail, history and comments.
+  - `/expenses/[id]/edit`.
+- **Saving is blocked until the split resolves.** The submit button is disabled while pending and while the preview has issues. Description and date are checked on submit.
+- **Exclusions:** unticked people are not participants. A 0% share in a percentage split is stored as a zero share. Payers don't have to take part.
+- **Amounts in the browser are never trusted:** the action receives the typed strings, not computed minor units.

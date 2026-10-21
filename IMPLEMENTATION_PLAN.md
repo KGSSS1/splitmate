@@ -2,6 +2,49 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21 — M5 Expenses complete
+
+- **Done:**
+  - **No migration.** The M2 RPCs, versioned rows, `audit_events` and `comments` policies already covered M5.
+  - **Split logic:**
+    - `src/lib/expenses/resolve.ts` turns form strings into total, payers, shares, rounding units and pairwise debts with `src/lib/accounting`. It is shared by the live preview and the Server Actions.
+    - `expenseFormSchema` runs it in `superRefine`.
+    - `buildExpensePayload` builds the RPC jsonb.
+  - **Form** (`src/components/expenses/expense-form.tsx`), mobile first:
+    - Fields: split with (group or friend), description, amount (`inputMode="decimal"`), currency, date (today in the profile's time zone), category, one or several payers, notes and tags.
+    - Split methods: equal, exact, percentage, shares, and itemized with tax, service, tip and discount (proportional or equal). Exclusions are tick boxes.
+    - **Live preview:** shares with a "+1 rounding unit" marker, who owes whom, and what to fix. Save stays disabled until the split is valid and while pending.
+    - One idempotency key per form, reused on retry.
+  - **Expense page:** paid by, shares (percentages and weights), items, notes and tags.
+    - **History:** who added, edited or cancelled it, with before → after for each changed field.
+    - **Comments:** add, and delete your own.
+    - **Actions:** edit, duplicate (`/expenses/new?from=`) and cancel with confirmation. Locked expenses explain why.
+  - **Group pages:** an Expenses tab (default, 20 per page, cancelled expenses labelled, "You lent / You owe" per row). Members moved to `/groups/[id]/members`.
+  - **Friend page:** "Add expense" and direct expenses with that friend.
+  - Add Expense is enabled in the nav.
+- **Tests:**
+  - 371 unit/component tests (+49), including:
+    - the resolver: SPEC §7 cases, every split method, payers, itemized, determinism;
+    - 12 expense-form component tests: save gating, messages, rounding marker, payers, itemized, description check, the idempotency key reused on retry, edit version.
+  - Integration tests: 11 (+3, `tests/integration/expenses.test.ts`). They exercise create → idempotent retry → edit (exact reversal rows plus new charges) → second edit → stale version refused → cancel (ledger nets to zero), an itemized bill, and a tampered payload being refused.
+  - pgTAP: 346, unchanged.
+  - Playwright: 26 runs (13 tests × desktop and Pixel 7).
+    - New: E2E step 3 (₹900 split equally → +₹600 / −₹300 / −₹300 on the ledger-backed Members tab), a comment, an edit to ₹1,200 by percentage (+₹900 / −₹600 / −₹300), a cancel (all settled up), and a duplicate.
+    - New: a direct expense split by exact amounts, with the friend balance from the ledger.
+  - Pagination was checked by hand with 23 expenses (page 2 of 2). The local DB was reset afterwards.
+- **Decisions to know:**
+  - **Group URLs:** `/groups/[id]` is now Expenses, and Members is `/groups/[id]/members`. Invitation acceptance still lands on `/groups/[id]?joined=1`.
+  - **E2E helpers** for groups are in `tests/e2e/support/groups.ts` (`joinThroughInvite`, `openGroupTab`, …). One M3 assertion (`default-email-links`) got a longer timeout: login → dashboard → onboarding is two redirects, which can exceed 5 s under full parallel load.
+  - **Categories** are preset keys (`src/lib/expenses/options.ts`). A stored value that isn't a preset (such as the seed's "Groceries") is kept as an option, so editing doesn't wipe it.
+  - **Expense history** shows the fields in `private.expense_snapshot`: description, amount, date, category, split, payers, shares. Notes, tags and items are not in the snapshot, so their changes don't appear in the diff.
+- **Not done / known limitations:**
+  - **Receipts are M7.**
+  - **Items:** each item is split equally among the people ticked for it. Weighted item assignments are supported by the engine and the database, but not by the form.
+  - **Direct expenses:** only the latest 50 with a friend are listed (from the latest 100 direct expenses). There is no pagination yet.
+  - **Display order:** participant order isn't stored, so the detail page lists shares by name. Rounding ties still follow the entry order used when saving.
+- **Staging:** M5 has no migration. The code isn't pushed: say if you want `staging` pushed.
+- **Next:** M6, balances, dashboard and settlements. Group balances already come from `group_balances()` on the Members tab; the simplify-debts suggestions and the settle-up flow are next.
+
 ### 2026-10-21 — M4 Friends, groups and invitations complete
 
 - **Done:**
@@ -227,12 +270,13 @@
 - [x] Leave/remove only at zero balance in every currency
 - [x] E2E steps 1–2 pass, plus wrong-group and revoked-token tests
 
-### M5 — Expenses
-- [ ] Add/edit/duplicate/cancel expense (group and direct)
-- [ ] All split types, multi-payer, itemized with tax/tip/discount
-- [ ] Live share preview with rounding indicator; server-side recomputation
-- [ ] Expense detail, version history (before/after), comments
-- [ ] E2E step 3 passes; edit/cancel reflected in balances
+### M5 — Expenses ✅
+- [x] Add/edit/duplicate/cancel expense (group and direct)
+- [x] All split types, multi-payer, itemized with tax/tip/discount
+- [x] Live share preview with rounding indicator; server-side recomputation
+- [x] Expense detail, version history (before/after), comments
+- [x] Group expense list with pagination
+- [x] E2E step 3 passes; edit/cancel reflected in balances
 
 ### M6 — Balances, dashboard, settlements
 - [ ] Group and friend balances (per currency)

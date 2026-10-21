@@ -55,7 +55,9 @@ test("default sign-up link in another browser confirms the email and asks to log
   await field(otherPage, "Email").fill(account.email);
   await field(otherPage, "Password").fill(account.password);
   await otherPage.getByRole("button", { name: "Log in" }).click();
-  await expect(otherPage).toHaveURL(/\/onboarding$/);
+  // Login → /dashboard → onboarding gate → /onboarding: two server redirects,
+  // which can take a while when the full suite runs in parallel.
+  await expect(otherPage).toHaveURL(/\/onboarding$/, { timeout: 30_000 });
   await other.close();
 });
 

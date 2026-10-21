@@ -1,52 +1,20 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { field, newAccount, newPersonPage, onboard, signUpAndVerify } from "./support/accounts";
+import {
+  createGroup,
+  createInviteLink,
+  members,
+  NAVIGATION,
+  newMember,
+  openGroupTab,
+  uniqueName,
+} from "./support/groups";
 
 // SPEC §17 E2E steps 1–2, plus invitation token misuse. Runs against local
 // Supabase (emails from Mailpit). Several people sign up in one test, each in
 // their own browser context.
 test.describe.configure({ timeout: 180_000 });
-
-const GROUP_URL = /\/groups\/([0-9a-f-]{36})(\?|$)/;
-// Redirects after a Server Action can land on a route the dev server compiles
-// on first use, while other workers compete for it.
-const NAVIGATION = { timeout: 30_000 };
-
-function uniqueName(prefix: string) {
-  return `${prefix} ${Math.random().toString(36).slice(2, 7)}`;
-}
-
-/** Signs up and onboards someone new; ends on the dashboard. */
-async function newMember(page: Page, name: string) {
-  await signUpAndVerify(page, newAccount());
-  await onboard(page, name);
-  await expect(page).toHaveURL(/\/dashboard$/, NAVIGATION);
-}
-
-/** Creates a group from the Groups page and returns its ID. */
-async function createGroup(page: Page, name: string, type: "Trip" | "Home" | "Couple" | "Other") {
-  await page.goto("/groups/new");
-  await field(page, "Group name").fill(name);
-  await field(page, "Group type").selectOption({ label: type });
-  await field(page, "Default currency").selectOption("INR");
-  await page.getByRole("button", { name: "Create group" }).click();
-  await expect(page).toHaveURL(GROUP_URL, NAVIGATION);
-  await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
-  return GROUP_URL.exec(page.url())?.[1] ?? "";
-}
-
-/** Creates a shareable invitation link on the group page and returns its path. */
-async function createInviteLink(page: Page) {
-  await page.getByRole("button", { name: "Create invite link" }).click();
-  const link = field(page, "Invite link");
-  await expect(link).toHaveValue(/\/invite\/[A-Za-z0-9_-]{43}\?group=/);
-  const url = new URL(await link.inputValue());
-  return `${url.pathname}${url.search}`;
-}
-
-function members(page: Page) {
-  return page.getByRole("list", { name: "Members" }).filter({ visible: true }).getByRole("listitem");
-}
 
 test("A creates a group; B and C sign up from the invite link and join (E2E steps 1–2)", async ({
   page,
@@ -62,6 +30,8 @@ test("A creates a group; B and C sign up from the invite link and join (E2E step
   const groupName = uniqueName("Goa trip");
   const groupId = await createGroup(page, groupName, "Trip");
   await expect(page.getByText("Trip · INR · Debts simplified")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No expenses yet" })).toBeVisible();
+  await openGroupTab(page, "Members");
   await expect(members(page)).toHaveCount(1);
   await expect(members(page).first()).toContainText(`${asha} (you)`);
   await expect(members(page).first()).toContainText("Admin");
@@ -89,6 +59,7 @@ test("A creates a group; B and C sign up from the invite link and join (E2E step
 
     await expect(other).toHaveURL(new RegExp(`/groups/${groupId}\\?joined=1$`), NAVIGATION);
     await expect(other.getByText(`You joined ${groupName}.`)).toBeVisible();
+    await openGroupTab(other, "Members");
     await expect(members(other).filter({ hasText: asha })).toHaveCount(1);
     await expect(members(other).filter({ hasText: `${name} (you)` })).toHaveCount(1);
 
@@ -124,12 +95,13 @@ test("an invite token cannot be used for a different group, and fails after revo
   await newMember(page, uniqueName("Asha"));
   const alpha = uniqueName("Alpha");
   const alphaId = await createGroup(page, alpha, "Home");
+  await openGroupTab(page, "Members");
   const invitePath = await createInviteLink(page);
   const betaId = await createGroup(page, uniqueName("Beta"), "Other");
   const token = /\/invite\/([^?]+)/.exec(invitePath)?.[1] ?? "";
 
   // The admin edits the group's settings: name, type, currency, simplify debts.
-  await page.getByRole("navigation", { name: "Group sections" }).getByRole("link", { name: "Settings" }).click();
+  await openGroupTab(page, "Settings");
   await expect(field(page, "Group name")).toHaveValue(/^Beta /);
   await field(page, "Group name").fill("Beta flat");
   await field(page, "Group type").selectOption({ label: "Couple" });
@@ -156,7 +128,7 @@ test("an invite token cannot be used for a different group, and fails after revo
   await expect(dave.getByRole("heading", { name: "Join this group?" })).toBeVisible();
   await expect(dave.getByText(alpha)).toBeVisible();
 
-  await page.goto(`/groups/${alphaId}`);
+  await page.goto(`/groups/${alphaId}/members`);
   const invitations = page.getByRole("list", { name: "Open invitations" });
   await expect(invitations.getByRole("listitem")).toHaveCount(1);
   await invitations.getByRole("button", { name: "Revoke" }).click();

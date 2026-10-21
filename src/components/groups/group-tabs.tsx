@@ -6,12 +6,13 @@ import { usePathname } from "next/navigation";
 import { ROUTES } from "@/lib/auth/routes";
 import { cn } from "@/lib/utils";
 
-/** Sections of a group's pages. Expenses and balances join these in M5/M6. */
+/** Sections of a group's pages. Balances join these in M6. */
 export function GroupTabs({ groupId }: { groupId: string }) {
   const pathname = usePathname();
   const base = `${ROUTES.groups}/${groupId}`;
   const tabs = [
-    { href: base, label: "Members" },
+    { href: base, label: "Expenses" },
+    { href: `${base}/members`, label: "Members" },
     { href: `${base}/settings`, label: "Settings" },
   ];
 

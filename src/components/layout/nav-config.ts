@@ -28,9 +28,9 @@ export const SECONDARY_NAV: readonly NavItem[] = [
 ];
 
 export const ADD_EXPENSE: Omit<NavItem, "icon"> = {
-  href: "/expenses/new",
+  href: ROUTES.newExpense,
   label: "Add expense",
-  available: false, // M5
+  available: true,
 };
 
 /** True when `pathname` is `href` or a page below it. */

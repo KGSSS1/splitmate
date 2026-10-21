@@ -34,7 +34,7 @@ test("sign up, verify by email, onboard, log out and back in to an empty dashboa
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav).toBeVisible();
   await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("button", { name: /Add expense/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Add expense" }).filter({ visible: true }).first()).toBeVisible();
 
   if (isMobile) {
     // Bottom bar on phones, with the secondary pages behind the menu.
