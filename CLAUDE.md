@@ -20,7 +20,8 @@ SplitMate is an original expense-sharing web app (inspired by Splitwise's core f
 | Dev server | `npm run dev` |
 | Lint | `npm run lint` |
 | Type check | `npm run typecheck` (runs `next typegen` then `tsc --noEmit`) |
-| Unit/integration tests (Vitest) | `npm test` (watch: `npm run test:watch`) |
+| Unit tests (Vitest, jsdom) | `npm test` (watch: `npm run test:watch`) |
+| Integration tests (Vitest, local Supabase) | `npm run test:integration` |
 | E2E tests (Playwright) | `npm run test:e2e` |
 | Database tests (pgTAP) | `npm run db:test` |
 | Build | `npm run build` |
@@ -35,7 +36,9 @@ Local Supabase needs Docker. `.env.local` values come from `npx supabase status`
 - Next.js 16 App Router, React 19, TypeScript `strict` + `noUncheckedIndexedAccess`, Tailwind v4, shadcn/ui (base-nova, Base UI primitives), Lucide icons, Zod, React Hook Form, Recharts, Supabase via `@supabase/ssr` + `@supabase/supabase-js`.
 - Next 16: request interception is `src/proxy.ts` exporting `proxy` (not `middleware.ts`). `cacheComponents` is enabled. Check `node_modules/next/dist/docs/` before using an unfamiliar API.
 - Supabase keys: `sb_publishable_...` in client code, `sb_secret_...` only in server-only code. No legacy `anon`/`service_role` JWT keys.
-- Server identity: `getUser()` / `getClaims()`, never `getSession()` alone on the server.
+- Server identity: `getUser()` / `getClaims()`, never `getSession()` alone on the server. Use `src/server/auth.ts` (`requireUser`, `getProfile`, `requireOnboardedProfile`); route access rules are in `src/lib/auth/routes.ts`.
+- Cache Components: anything that reads the session goes behind `<Suspense>` (or a `loading.tsx`); `src/lib/supabase/server.ts` calls `connection()` so auth never runs during prerender.
+- Playwright: pages navigated away from stay mounted but hidden, so locate fields with `getByRole` or visible-filtered `getByLabel`.
 - Verify library APIs against installed types/docs, not memory.
 
 ## Code conventions

@@ -60,14 +60,23 @@ Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and Supabas
 
 Local services: Studio <http://127.0.0.1:54323>, Mailpit (auth emails) <http://127.0.0.1:54324>. Stop the stack with `npm run db:stop`.
 
+## Trying the app locally
+
+- Sign up at <http://localhost:3000/signup>. Email confirmation is on, so open Mailpit at <http://127.0.0.1:54324>, click the link in the "Confirm your SplitMate account" email, then pick your name and default currency.
+- Or log in as a seed user (e.g. `alice@example.test` / `splitmate-local-dev`); the dashboard shows Alice's seeded balances.
+- Password reset emails also land in Mailpit.
+- After changing `supabase/config.toml` or `supabase/templates/`, restart the stack (`npm run db:stop` then `npm run db:start`).
+- Email links go to `NEXT_PUBLIC_APP_URL`/auth/confirm. That URL must match `additional_redirect_urls` in `supabase/config.toml` (`http://localhost:3000/**` and the E2E port `http://localhost:3100/**` are allowed).
+
 ## Checks
 
 | Check | Command |
 | --- | --- |
 | Lint | `npm run lint` |
 | Type check | `npm run typecheck` |
-| Unit / integration tests (Vitest) | `npm test` |
-| End-to-end tests (Playwright; starts its own dev server on port 3100) | `npm run test:e2e` |
+| Unit and component tests (Vitest, jsdom) | `npm test` |
+| Integration tests (Vitest against the local Supabase stack) | `npm run test:integration` |
+| End-to-end tests (Playwright; starts its own dev server on port 3100, reads emails from Mailpit; needs the local stack) | `npm run test:e2e` |
 | Database tests (pgTAP; needs the local stack) | `npm run db:test` |
 | Production build | `npm run build` then `npm start` |
 
@@ -79,9 +88,11 @@ Local services: Studio <http://127.0.0.1:54323>, Mailpit (auth emails) <http://1
 src/app/         routes (App Router)
 src/components/  UI components (shadcn/ui in components/ui)
 src/config/      brand config
-src/lib/         env validation and pure domain logic
+src/lib/         env validation, Supabase clients and pure domain logic
+src/server/      Server Actions and data access (identity checks live here)
+src/proxy.ts     session refresh and route protection
 src/types/       generated Supabase types
-supabase/        CLI config, migrations, seed, pgTAP tests
+supabase/        CLI config, auth email templates, migrations, seed, pgTAP tests
 tests/           unit, integration and e2e tests
 docs/            spec and technical docs
 ```

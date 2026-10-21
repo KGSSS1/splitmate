@@ -12,4 +12,11 @@ describe("Home page", () => {
     expect(screen.getByText(brand.tagline)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: brand.logo.alt })).toBeInTheDocument();
   });
+
+  it("links to sign-up and login", () => {
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/signup");
+    expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
+  });
 });

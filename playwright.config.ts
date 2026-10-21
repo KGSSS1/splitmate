@@ -23,5 +23,7 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Email links must point at this server (allowed in supabase/config.toml).
+    env: { NEXT_PUBLIC_APP_URL: baseURL },
   },
 });

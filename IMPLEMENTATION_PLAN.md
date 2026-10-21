@@ -2,6 +2,40 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21 — M3 Auth and app shell complete (staging deployment not done)
+
+- **Done:**
+  - **Auth** with `@supabase/ssr` 0.12: sign-up, email verification, login, logout, password reset and resend-confirmation.
+    - Email links use the token-hash flow (`supabase/templates/` → `/auth/confirm`).
+    - `src/proxy.ts` refreshes the session and redirects by route access.
+    - Server identity comes from `getClaims()` through `src/server/auth.ts`.
+  - **Local auth config:** email confirmation is on (Mailpit), minimum password length is 8, and `secure_password_change` is on. Redirect URLs allow ports 3000 and 3100.
+  - **Pages:**
+    - Onboarding (name, default currency, time zone detected from the browser).
+    - Settings: profile, theme, change password, log out.
+  - **Dashboard:** real owed / owing / net totals per currency from `friend_balances()` (`src/lib/accounting/summary.ts`), and an empty state when there are none.
+  - **Shell:** desktop sidebar; phone header menu and bottom bar with an Add Expense button; safe-area insets; skip link.
+  - **Themes:** light / dark / system.
+  - **States:** loading skeletons, empty states, error, global-error and not-found pages.
+  - Architecture notes: `docs/architecture.md` (end).
+- **Tests:**
+  - 253 unit/component tests: routes, proxy, auth errors, schemas, balance summary, theme, sign-up form.
+  - The first Vitest integration suite against local Supabase (8 tests, `npm run test:integration`).
+  - 10 Playwright runs (5 tests × desktop + Pixel 7): sign up → Mailpit link → onboarding → log out → log in → empty dashboard; password reset by email; invalid link; landing; protected redirect.
+  - pgTAP unchanged (274).
+- **Decisions to know:**
+  - **Nav items for pages not built yet** (Groups, Friends, Activity, Add Expense) are shown disabled with "Soon". They come from `src/components/layout/nav-config.ts`; set `available: true` in M4/M5/M6.
+  - **No browser or secret-key Supabase client yet.** The no-placeholder rule applies; add each when first needed (realtime in M8, account deletion in M9). Integration tests make their own secret-key client in `tests/integration/support/`.
+  - **`npm test` now runs only the `unit` Vitest project.** Integration tests need the local stack.
+  - **Next dev badge moved to bottom-right** (`next.config.ts`): bottom-left covered the sidebar's Log out button and blocked clicks.
+  - **Theme lives in `localStorage`** (per device), not in the profile.
+- **Next:**
+  - First staging deployment (hosted Supabase + Vercel preview). **Needs approval**, plus a hosted project, a Vercel account and SMTP settings from you.
+  - Then M4: friends, groups, invitations.
+- **Known issues:**
+  - The theme picker shows "System" until hydration when another theme is saved. The page colours are right from the first paint.
+  - Email link scanners that pre-fetch links could use up a confirmation token. Requests for a new link are handled (resend button on login).
+
 ### 2026-10-21 — M2 security review fixes
 
 - An independent security review of the M2 migrations found 10 issues: 3 high, 1 medium, 6 low.
@@ -104,13 +138,13 @@
 - [x] pgTAP tests: constraints, RLS (member / non-member / removed / anon), RPCs, stale version, idempotency, token misuse, storage
 - [x] `docs/database.md`
 
-### M3 — Auth and app shell
-- [ ] Sign-up, email verification (local Mailpit), login, password reset, logout
-- [ ] `src/proxy.ts` session refresh; protected routes; Supabase server/browser/admin clients
-- [ ] Onboarding (name, default currency); profile settings
-- [ ] Responsive shell: mobile bottom nav + Add Expense, desktop sidebar, safe-area insets
-- [ ] Light/dark themes, loading skeletons, error/not-found pages
-- [ ] Empty dashboard reachable on mobile and desktop
+### M3 — Auth and app shell (staging deployment pending)
+- [x] Sign-up, email verification (local Mailpit), login, password reset, logout
+- [x] `src/proxy.ts` session refresh; protected routes; Supabase server client (browser/admin clients deferred until first use)
+- [x] Onboarding (name, default currency); profile settings
+- [x] Responsive shell: mobile bottom nav + Add Expense, desktop sidebar, safe-area insets
+- [x] Light/dark themes, loading skeletons, error/not-found pages
+- [x] Empty dashboard reachable on mobile and desktop
 - [ ] First staging deployment (hosted Supabase + Vercel preview) — **needs approval**
 
 ### M4 — Friends, groups, invitations

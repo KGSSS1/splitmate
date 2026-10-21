@@ -10,6 +10,8 @@ if (!process.argv.includes("typegen")) {
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // The default bottom-left dev badge covers the sidebar's Log out button.
+  devIndicators: { position: "bottom-right" },
   partialPrefetching: true,
   turbopack: {
     rules: {

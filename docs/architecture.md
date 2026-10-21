@@ -1,5 +1,7 @@
 # Architecture: money and accounting engine
 
+(Authentication and the app shell are covered at the end.)
+
 This document records the accounting rules implemented in M1. The code is pure TypeScript with no I/O:
 
 | Module | Responsibility |
@@ -129,3 +131,19 @@ Rejected and cancelled are final. Completing twice is an invalid transition, so 
 ## Idempotency
 
 `createIdempotencyKey()` generates a UUID v4 on the client. Retries reuse the same key, and the database's unique constraint (per creator) turns a duplicate submission into a no-op. Ledger construction is deterministic, so a retried request always produces identical rows.
+
+# Authentication and app shell (M3)
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Session refresh + route redirects | `src/proxy.ts` → `src/lib/supabase/proxy.ts` | Calls `getClaims()` on every page request, writes refreshed cookies and no-store cache headers to the response (also on redirects). Signed-out visitors to protected pages go to `/login?next=…`; signed-in visitors to guest pages go to `/dashboard`. |
+| Route access rules | `src/lib/auth/routes.ts` | Everything not listed as guest (`/`, `/login`, `/signup`, `/check-email`, `/reset-password`) or public (`/auth/*`) is protected. `safeNextPath` only allows same-origin protected paths after login. |
+| Server identity | `src/server/auth.ts` | `getClaims()` (JWT verified), memoized per request. Pages, Server Actions and route handlers call `requireUser()` themselves; the proxy redirect is a convenience, not the check. |
+| Supabase clients | `src/lib/supabase/server.ts` | Publishable key + cookies, so RLS applies. No browser or secret-key client yet: none is needed until realtime (M8) and account deletion (M9). |
+| Email links | `supabase/templates/*.html` → `src/app/auth/confirm/route.ts` | Token-hash flow (`verifyOtp`), so a link works in any browser. Confirmation → `/onboarding`; recovery → `/reset-password/update`. |
+| Onboarding | `(app)/layout.tsx` `OnboardingGate` | App pages render only after `profiles.onboarded_at` is set. |
+
+- **Errors:** Supabase Auth codes map to fixed messages (`src/lib/auth/errors.ts`). Sign-up and password-reset requests answer the same way whether or not the email has an account.
+- **Cache Components:** the shell (sidebar, bottom bar) is static. Anything that reads the session streams in behind `<Suspense>` or a `loading.tsx` skeleton.
+- **Theme:** a `localStorage` preference (`light` / `dark` / `system`), applied before first paint by an inline `<head>` script (`src/lib/theme.ts`). It is kept per device, not in the profile.
+- **Navigation:** `src/components/layout/nav-config.ts` lists Dashboard, Groups, Friends, Activity and Add Expense. Pages that don't exist yet are marked `available: false` and show as disabled "Soon" items. Set the flag in the milestone that builds each page.

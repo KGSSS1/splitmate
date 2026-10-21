@@ -1,0 +1,5 @@
+<!-- Password reset. The app passes redirectTo = <app>/auth/confirm. -->
+<h2>Reset your SplitMate password</h2>
+<p>Someone asked to reset the password for this account. Follow this link to choose a new one:</p>
+<p><a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">Reset my password</a></p>
+<p>If you didn't ask for this, you can ignore this email; your password stays the same.</p>
