@@ -164,7 +164,7 @@ These are read at **build** time (`NEXT_PUBLIC_*` values are inlined), so redepl
 
 ### Build and runtime
 
-- **Settings → Build and Deployment → Node.js Version:** `24.x`, which is what development uses (`package.json` allows ≥ 22).
+- **Settings → Build and Deployment → Node.js Version:** `24.x`, matching `"engines": { "node": "24.x" }` in `package.json` (Vercel reads that field too and warns on a mismatch).
 - **Settings → Functions → Function Region:** the region closest to your Supabase region, e.g. Mumbai (`bom1`) for a Mumbai project. Each page makes several database round trips, so a distant region adds noticeable latency.
 
 ### Deployment Protection: turning off Vercel Authentication

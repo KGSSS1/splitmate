@@ -6,7 +6,7 @@ Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and Supabas
 
 ## Prerequisites
 
-- Node.js 22 or newer (developed on Node 24 LTS) and npm
+- Node.js 24 (LTS; `package.json` pins `"engines": { "node": "24.x" }`, matching Vercel) and npm
 - Docker Desktop (for the local Supabase stack; on Windows, WSL2 backend recommended)
 
 ## Setup
