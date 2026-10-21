@@ -37,9 +37,14 @@ describe("env validation", () => {
     ).toThrow(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY contains a secret key/);
   });
 
-  it("uses the Vercel deployment URL on previews without an explicit app URL", () => {
+  it("uses the stable branch URL on previews, else the deployment URL", () => {
     const vercel = { VERCEL_ENV: "preview", VERCEL_URL: "splitmate-abc123-team.vercel.app" };
     expect(resolveAppUrl(vercel)).toBe("https://splitmate-abc123-team.vercel.app");
+    expect(resolveAppUrl({ ...vercel, VERCEL_BRANCH_URL: "splitmate-git-staging-team.vercel.app" })).toBe(
+      "https://splitmate-git-staging-team.vercel.app",
+    );
+    // CLI deployments have no branch; Vercel may pass the variable empty.
+    expect(resolveAppUrl({ ...vercel, VERCEL_BRANCH_URL: "" })).toBe("https://splitmate-abc123-team.vercel.app");
     expect(resolveAppUrl({ ...vercel, NEXT_PUBLIC_APP_URL: "https://staging.example.com" })).toBe(
       "https://staging.example.com",
     );

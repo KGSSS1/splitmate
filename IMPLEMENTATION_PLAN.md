@@ -2,6 +2,21 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21: Staging deployment prepared (not yet deployed)
+
+- **Guide:** `docs/deployment.md` walks through staging step by step: hosted Supabase plus the Vercel CLI, a phone test checklist, and troubleshooting. Nothing remote has been created or changed yet.
+- **Decisions (confirmed by the user):**
+  - Staging lives at a fixed alias, `splitmate-staging-<scope>.vercel.app`, moved after every `vercel deploy` with `vercel alias set`. `VERCEL_BRANCH_URL` only exists for Git-integration deployments, and this repo has no Git remote.
+  - `NEXT_PUBLIC_APP_URL` = the alias, set in both Vercel environments. A new project's first deployment is always production.
+  - Vercel Authentication is off for this project, so email links work from the Gmail app. The trade-off is written up in the guide.
+  - Supabase redirect list: the exact alias plus `https://*-<scope>.vercel.app/**`.
+- **Code:**
+  - `resolveAppUrl` (`src/lib/env.ts`) fills in `NEXT_PUBLIC_APP_URL` on previews when it is unset: `VERCEL_BRANCH_URL` first, then `VERCEL_URL`.
+  - `SUPABASE_SECRET_KEY` is optional until M9.
+  - `.vercelignore` added.
+  - Migration `20261021131000_service_role_grants.sql` plus pgTAP `100_service_role_grants`: hosted projects no longer add default Data API grants (Supabase changelog 45329).
+- **Rule for later migrations:** every new table needs explicit `GRANT`s for `authenticated` (as needed) **and** `service_role`. The default privileges from the new migration cover `service_role` for objects created by `postgres`.
+
 ### 2026-10-21 — M3 Auth and app shell complete (staging deployment not done)
 
 - **Done:**

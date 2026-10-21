@@ -97,13 +97,15 @@ export function parseServerEnv(source: EnvSource): ServerEnv {
 
 /**
  * The app's public URL. An explicit NEXT_PUBLIC_APP_URL always wins. On a
- * Vercel preview without one, it is the deployment's own URL, so email links
- * return to the exact preview that sent them (docs/deployment.md).
+ * Vercel preview without one, it is the stable Git branch URL when the
+ * deployment has one (Git integration only), otherwise the deployment's own
+ * URL (docs/deployment.md).
  */
 export function resolveAppUrl(source: EnvSource): string | undefined {
   if (source.NEXT_PUBLIC_APP_URL) return source.NEXT_PUBLIC_APP_URL;
-  if (source.VERCEL_ENV === "preview" && source.VERCEL_URL) return `https://${source.VERCEL_URL}`;
-  return undefined;
+  if (source.VERCEL_ENV !== "preview") return undefined;
+  const host = source.VERCEL_BRANCH_URL || source.VERCEL_URL;
+  return host ? `https://${host}` : undefined;
 }
 
 /** Validates every variable at once so all problems are reported together. */
