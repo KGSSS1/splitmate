@@ -90,6 +90,7 @@ Both run with the caller's rights, so RLS applies.
   - On hosted projects, Supabase's advisor rule 0029 ("Signed-In Users Can Execute SECURITY DEFINER Function") flags each of these RPCs, plus `profile_cards`, as a WARN. That is intended: `authenticated` must be able to call them, and the authorization checks live inside each function, covered by the pgTAP suite.
   - Treat a 0029 warning on any **other** function as a real finding.
 - **New tables** get no privileges by default. The default grants for `anon`/`authenticated` are revoked, so every new table needs explicit `GRANT`s and policies.
+- **Friend requests by email** (`send_friend_request`) return their outcome (including `not_found`) instead of raising. That way every lookup is counted by the rate limit: 30 per user per hour, stored in `private.rate_limit_events` (not exposed through the API).
 - **Invitation tokens** are 256 random bits. They are returned once by `create_invitation`, and only their SHA-256 hash is stored.
   - An invitation is valid only while its creator is a current member.
   - An invitation addressed to an email requires that email to be confirmed.
@@ -115,10 +116,16 @@ All functions require a signed-in user. Payloads use minor units, and the shares
 
 | Function | Purpose |
 | --- | --- |
-| `create_group(name, default_currency?, description?)` | Creates a group; the caller becomes admin |
+| `create_group(name, default_currency?, description?, group_type?, simplify_debts?)` | Creates a group; the caller becomes admin. Types: `trip`, `home`, `couple`, `other` |
+| `update_group(group_id, name, description, default_currency, group_type, simplify_debts)` | Admins only; audited with before and after |
+| `set_member_role(group_id, user_id, role)` | Admins promote or demote; the last admin cannot be demoted |
 | `create_invitation(group_id, invited_email?, max_uses?, expires_in_hours?)` | Returns `(invitation_id, token)`; any member; limited to 20 per user per hour |
 | `accept_invitation(token? \| invitation_id?, group_id?)` | Joins the group and befriends every member; no-op if already a member |
 | `revoke_invitation(invitation_id)` | The invitation's creator or an admin |
+| `invitation_preview(token, group_id?)` | Status for the acceptance page (`valid`, `member`, `not_found`, `wrong_group`, `wrong_email`, `revoked`, `expired`, `used`, `inactive`). Group details only for `valid`/`member`; does not consume a use |
+| `my_group_invitations()` | Open invitations addressed to the caller's email |
+| `send_friend_request(email)` | Exact email match. Returns `requested`, `already_requested`, `accepted` (they had asked you), `already_friends`, `not_found` or `self`; rate limited |
+| `accept_friend_request(friendship_id)` / `delete_friend_request(friendship_id)` | The recipient accepts; either side declines or withdraws a pending request |
 | `leave_group(group_id)` / `remove_group_member(group_id, user_id)` | Zero balance in every currency required; removal is for admins |
 | `create_expense(idempotency_key, group_id \| null, …, payers, participants, ledger_entries, items?)` | Group expense among current members, or a direct expense between two friends |
 | `update_expense(expense_id, expected_version, …)` | Version check; reverses the current version and writes the next one; returns the new version |
@@ -158,5 +165,7 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `070_storage` | Receipt upload, read and delete permissions |
 | `080_balances` | Group and friend balances, currency separation, ledger sums to zero |
 | `090_security_review` | Regression tests for the findings of the M2 security review (rerouted debts, rejoining after removal, frozen history, and more) |
+| `100_service_role_grants` | Explicit `service_role` grants (hosted projects no longer add them by default) |
+| `110_friends_groups` | Group type and settings, member roles, friend requests (all outcomes, rate limit), invitation preview, invitations addressed to you |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

@@ -2,6 +2,47 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21 — M4 Friends, groups and invitations complete
+
+- **Done:**
+  - **Migration** `20261021131100_friends_groups_invitations.sql`:
+    - `groups.group_type` (trip / home / couple / other).
+    - `create_group` gains type and simplify-debts arguments (old 3-argument signature dropped).
+    - New RPCs: `update_group` (admins, audited), `set_member_role` (the last admin can't be demoted), `send_friend_request` / `accept_friend_request` / `delete_friend_request`, `invitation_preview`, `my_group_invitations`.
+    - Postgres-backed rate limit table `private.rate_limit_events`: 30 friend-request lookups per hour, misses included.
+  - **Pages:**
+    - Friends: add by exact email, incoming/sent requests, list, and a detail page with per-currency balance from `friend_balances()` and shared groups.
+    - Groups: list with your balance and "Invitations for you", plus create.
+    - Group detail: Members tab with per-member ledger balances, admin actions, invite panel, open invitations with revoke, and leave. Settings tab for editing.
+    - Public `/invite/[token]` acceptance page.
+  - **Nav:** Groups and Friends are now enabled.
+  - **Invitations:**
+    - A shareable link (10 uses; expires after 1, 7 or 30 days) and email invitations (single-use and bound to the email; the app shows the link plus a `mailto:` draft, and sends no email itself).
+    - Link format: `/invite/{token}?group={id}`. A token used with another group's ID is refused.
+    - Sign-up from an invitation returns to it: an httpOnly cookie is turned into `/onboarding?next=…`.
+  - **Leave / remove** only at zero balance in every currency: the UI explains why when blocked, and the RPCs enforce it.
+- **Tests:**
+  - 322 unit/component tests (+53). pgTAP 346 (+67, new file `110_friends_groups`). Integration tests: 8, unchanged.
+  - 22 Playwright runs: 11 tests × desktop and Pixel 7. They include E2E steps 1–2 and a test that a token can't be used for another group and fails after revocation. Group settings editing is covered in the same spec.
+  - `supabase db lint` and advisors (warn level) are clean.
+- **Decisions to know:**
+  - **Local `supabase/config.toml` auth rate limits** raised to 200: `sign_in_sign_ups` and `token_verifications` (both were 30 per 5 minutes per IP). The full E2E run exceeded the old limits. Hosted settings are unaffected.
+  - **`ActionResult<TData>`** can now carry `data` (the new invitation link). `useActionSubmit` accepts any result type.
+  - **Shared E2E helpers** live in `tests/e2e/support/accounts.ts`; `newPersonPage()` opens a second person's browser context with the same device settings.
+  - **The nav reads `usePathname()` inside `<Suspense>`.** Without it, routes with dynamic segments fail prerendering.
+- **Not done / known limitations:**
+  - **No notifications UI yet (M8).** Friend-request, invitation and membership notifications are already written to the database.
+  - **Missing features:**
+    - Removing an accepted friend.
+    - Archiving or deleting a group.
+    - Real email delivery for invitations (optional per SPEC §15).
+  - **Opening the sign-up confirmation in a different browser** loses the way back to the invitation: the user lands on the dashboard and must reopen the link.
+  - **Logging in to an app page while not onboarded** goes to onboarding without the original `next` (pre-existing; invitation links are handled).
+- **Staging:** the new migration is **not** pushed to `splitmate-staging`. That needs your approval (`supabase db push`).
+- **Next:** M5, expenses.
+  - Add an Expenses tab to the group pages (`src/components/groups/group-tabs.tsx`) and enable Add Expense in `nav-config.ts`.
+  - Direct expenses need an accepted friendship (`are_friends`).
+
 ### 2026-10-21: Staging on Vercel Git integration (phone test pending)
 
 - **Setup:**
@@ -175,12 +216,12 @@
 - [x] Empty dashboard reachable on mobile and desktop
 - [ ] First staging deployment (hosted Supabase + Vercel preview) — **needs approval**
 
-### M4 — Friends, groups, invitations
-- [ ] Friend requests by email; auto-friend on group join
-- [ ] Group CRUD, member management, admin roles
-- [ ] Invite links and email invitations; acceptance page `invite/[token]`
-- [ ] Leave/remove only at zero balance in every currency
-- [ ] E2E steps 1–2 pass
+### M4 — Friends, groups, invitations ✅
+- [x] Friend requests by email; auto-friend on group join
+- [x] Group CRUD (create, edit, list; types, default currency, simplify-debts), member management, admin roles. Archive/delete not in scope yet
+- [x] Invite links and email invitations; acceptance page `invite/[token]`; expiry and revoke
+- [x] Leave/remove only at zero balance in every currency
+- [x] E2E steps 1–2 pass, plus wrong-group and revoked-token tests
 
 ### M5 — Expenses
 - [ ] Add/edit/duplicate/cancel expense (group and direct)

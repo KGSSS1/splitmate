@@ -17,8 +17,8 @@ export interface NavItem {
 /** Bottom navigation on phones, main section of the sidebar on desktop (SPEC §9). */
 export const PRIMARY_NAV: readonly NavItem[] = [
   { href: ROUTES.dashboard, label: "Dashboard", icon: LayoutDashboard, available: true },
-  { href: "/groups", label: "Groups", icon: Users, available: false }, // M4
-  { href: "/friends", label: "Friends", icon: UserRound, available: false }, // M4
+  { href: ROUTES.groups, label: "Groups", icon: Users, available: true },
+  { href: ROUTES.friends, label: "Friends", icon: UserRound, available: true },
   { href: "/activity", label: "Activity", icon: Activity, available: false }, // M6
 ];
 

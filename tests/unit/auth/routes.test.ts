@@ -16,6 +16,9 @@ describe("getRouteAccess", () => {
     ["/dashboard", "protected"],
     ["/settings", "protected"],
     ["/groups/123", "protected"],
+    ["/friends", "protected"],
+    ["/invite/abc", "public"],
+    ["/invite", "protected"],
     ["/no-such-page", "protected"],
     ["/loginx", "protected"],
   ] as const)("%s is %s", (path, access) => {
@@ -27,6 +30,10 @@ describe("safeNextPath", () => {
   it("keeps same-origin protected paths, including the query", () => {
     expect(safeNextPath("/settings")).toBe("/settings");
     expect(safeNextPath("/groups/abc?tab=balances")).toBe("/groups/abc?tab=balances");
+  });
+
+  it("allows invitation links, which are public, so new members return to them", () => {
+    expect(safeNextPath("/invite/abc_-123?group=0f0e")).toBe("/invite/abc_-123?group=0f0e");
   });
 
   it.each([

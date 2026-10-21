@@ -13,16 +13,16 @@ const NETWORK_ERROR = "Couldn't reach the server. Check your connection and try 
  * back onto the form. Redirecting actions simply navigate away.
  */
 export function useActionSubmit<TFieldValues extends FieldValues, TSubmit>(
-  action: (values: TSubmit) => Promise<ActionResult>,
+  action: (values: TSubmit) => Promise<ActionResult<unknown>>,
   setError: UseFormSetError<TFieldValues>,
 ) {
   const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult | null>(null);
+  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
 
   function submit(values: TSubmit) {
     setResult(null);
     startTransition(async () => {
-      let next: ActionResult;
+      let next: ActionResult<unknown>;
       try {
         next = await action(values);
       } catch {

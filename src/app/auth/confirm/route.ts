@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 
 import { ROUTES } from "@/lib/auth/routes";
 import { createClient } from "@/lib/supabase/server";
+import { onboardingUrlWithNext } from "@/server/after-auth";
 
 /**
  * Landing route for email links. Two link styles arrive here:
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
     // redirect() keeps the session cookies that verifyOtp just set.
-    if (!error) redirect(destination);
+    if (!error) redirect(destination === ROUTES.onboarding ? await onboardingUrlWithNext() : destination);
     redirect(`${ROUTES.login}?error=link`);
   }
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     // auth-js returns redirectType ("recovery" for password resets) at runtime,
     // but its exchangeCodeForSession return type omits it.
     const redirectType = (data as { redirectType?: string | null }).redirectType;
-    if (!error) redirect(redirectType === "recovery" ? ROUTES.updatePassword : ROUTES.onboarding);
+    if (!error) redirect(redirectType === "recovery" ? ROUTES.updatePassword : await onboardingUrlWithNext());
     if (error.code === "pkce_code_verifier_not_found") redirect(`${ROUTES.login}?error=browser`);
   }
 

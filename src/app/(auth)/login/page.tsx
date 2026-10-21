@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthFormSkeleton } from "@/components/auth/auth-form-skeleton";
+import { AuthSwitchLink } from "@/components/auth/auth-switch-link";
 import { LoginForm } from "@/components/auth/login-form";
 import { ROUTES } from "@/lib/auth/routes";
 
@@ -17,9 +17,7 @@ export default function LoginPage() {
       footer={
         <p>
           New here?{" "}
-          <Link href={ROUTES.signup} className="font-medium text-primary underline-offset-4 hover:underline">
-            Create an account
-          </Link>
+          <AuthSwitchLink href={ROUTES.signup}>Create an account</AuthSwitchLink>
         </p>
       }
     >

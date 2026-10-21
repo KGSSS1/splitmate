@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import type { z } from "zod";
 
@@ -14,15 +15,17 @@ import { signUp } from "@/server/actions/auth";
 type Values = z.input<typeof signUpSchema>;
 
 export function SignUpForm() {
+  // ?next= (e.g. an invitation) is where the user lands after confirming and onboarding.
+  const next = useSearchParams().get("next") ?? undefined;
   const form = useForm<Values, unknown, z.output<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", next },
   });
   const { pending, submit, error } = useActionSubmit(signUp, form.setError);
   const { errors } = form.formState;
 
   return (
-    <form noValidate onSubmit={form.handleSubmit(submit)} className="grid gap-4">
+    <form noValidate onSubmit={form.handleSubmit((values) => submit({ ...values, next }))} className="grid gap-4">
       <FormStatus error={error} />
       <TextField
         label="Email"

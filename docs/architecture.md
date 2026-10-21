@@ -147,3 +147,18 @@ Rejected and cancelled are final. Completing twice is an invalid transition, so 
 - **Cache Components:** the shell (sidebar, bottom bar) is static. Anything that reads the session streams in behind `<Suspense>` or a `loading.tsx` skeleton.
 - **Theme:** a `localStorage` preference (`light` / `dark` / `system`), applied before first paint by an inline `<head>` script (`src/lib/theme.ts`). It is kept per device, not in the profile.
 - **Navigation:** `src/components/layout/nav-config.ts` lists Dashboard, Groups, Friends, Activity and Add Expense. Pages that don't exist yet are marked `available: false` and show as disabled "Soon" items. Set the flag in the milestone that builds each page.
+
+# Friends, groups and invitations (M4)
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Data access | `src/server/friends.ts`, `src/server/groups.ts`, `src/server/invitations.ts` | Reads go through RLS and the read RPCs. Names come from `profile_cards` (`src/server/people.ts`). Balances come from `friend_balances()` / `group_balances()`, grouped per person and currency by `src/lib/accounting/person-balances.ts`, so they reflect the real ledger (all zero until expenses exist in M5). |
+| Writes | `src/server/actions/{friends,groups,invitations}.ts` | Every action validates with Zod (`src/lib/validation/{friends,groups}.ts`), re-checks the session, and calls one RPC. RPC errors become user-safe messages through `rpcFailure` / `src/lib/db/rpc-error.ts`: `SM4xx` messages pass through, everything else is generic. |
+| Invitation links | `src/lib/groups/invite-link.ts` | `/invite/{token}?group={groupId}`. The token alone decides the group. The group ID lets the page and `accept_invitation` refuse a token presented for another group. The raw token exists only in the inviter's action result; the database stores its hash, so a link is shown once. |
+| Acceptance page | `src/app/invite/[token]/page.tsx` | A **public** route, outside the app shell:<br>• Signed out: links to sign up or log in with `?next=` set to the invitation.<br>• Not onboarded: sent to `/onboarding?next=…`.<br>• Otherwise: `invitation_preview` shows the group, or why the link can't be used, without consuming it.<br>The page sets `referrer: no-referrer` and `noindex`. |
+| Coming back after sign-up | `src/server/after-auth.ts` | The confirmation email can't carry `next` (the templates append their own query string). So sign-up stores it in a 24-hour httpOnly cookie, and `/auth/confirm` turns it into `/onboarding?next=…`. If the link is opened in another browser, the user lands on the dashboard and can reopen the invitation. `safeNextPath` allows `/invite/…` as the one public destination. |
+| Email invitations | `createEmailInvite` | Single-use and bound to the email. No email is sent by the app (SPEC §15): the inviter gets the link plus a `mailto:` draft. Existing users also see it under "Invitations for you" on the Groups page (`my_group_invitations`). |
+| Leave / remove | Group page | The buttons appear only when the balance is zero in every currency, and the RPCs enforce it again (SM409). |
+
+- **Group pages:** tabs are Members (`/groups/[id]`) and Settings (`/groups/[id]/settings`). Expenses and balances tabs come in M5/M6. A former member sees only the header and a notice.
+- **Nav and dynamic routes:** the nav reads `usePathname()` inside `<Suspense>` (`WithPathname` in `app-nav.tsx`). Otherwise routes with dynamic segments could not prerender their static shell.

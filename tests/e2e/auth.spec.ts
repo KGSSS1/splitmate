@@ -1,52 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { field, logIn, logOut, newAccount, signUpAndVerify } from "./support/accounts";
 import { getEmailLink } from "./support/mailpit";
 
 // Runs against local Supabase only: emails are read from its Mailpit inbox.
 // Each flow visits several pages, which the dev server compiles on first use.
 test.describe.configure({ timeout: 90_000 });
-
-/**
- * A visible form control by its exact label. With Cache Components, pages
- * navigated away from stay mounted but hidden, so the same label can exist twice.
- */
-function field(page: Page, label: string) {
-  return page.getByLabel(label, { exact: true }).filter({ visible: true });
-}
-
-function newAccount() {
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return { email: `e2e-${id}@example.com`, password: `Test-${id}-pw` };
-}
-
-async function signUpAndVerify(page: Page, account: { email: string; password: string }) {
-  await page.goto("/signup");
-  await field(page, "Email").fill(account.email);
-  await field(page, "Password").fill(account.password);
-  await page.getByRole("button", { name: "Create account" }).click();
-
-  await expect(page).toHaveURL(/\/check-email\?for=signup$/);
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-
-  await page.goto(await getEmailLink(account.email, "Confirm your"));
-  await expect(page).toHaveURL(/\/onboarding$/);
-}
-
-async function logOut(page: Page, isMobile: boolean) {
-  if (isMobile) {
-    await page.getByRole("button", { name: "Open menu" }).click();
-    await page.getByRole("menuitem", { name: "Log out" }).click();
-  } else {
-    await page.getByRole("button", { name: "Log out" }).click();
-  }
-  await expect(page).toHaveURL(/\/login$/);
-}
-
-async function logIn(page: Page, account: { email: string; password: string }) {
-  await field(page, "Email").fill(account.email);
-  await field(page, "Password").fill(account.password);
-  await page.getByRole("button", { name: "Log in" }).click();
-}
 
 test("sign up, verify by email, onboard, log out and back in to an empty dashboard", async ({
   page,

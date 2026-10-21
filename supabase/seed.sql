@@ -38,7 +38,7 @@ declare
   v_invite record;
 begin
   perform set_config('request.jwt.claims', json_build_object('sub', v_alice, 'role', 'authenticated')::text, true);
-  v_group := public.create_group('Flat 4B', 'INR', 'Rent, groceries and bills');
+  v_group := public.create_group('Flat 4B', 'INR', 'Rent, groceries and bills', 'home');
   select * into v_invite from public.create_invitation(v_group, null, 5, 720);
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_bob, 'role', 'authenticated')::text, true);

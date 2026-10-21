@@ -329,14 +329,14 @@ isOneToOne: false
                   ]
                 },"groups": {
                   Row: {
-                    "archived_at": string | null,"created_at": string,"created_by": string,"default_currency": string,"description": string | null,"id": string,"name": string,"simplify_debts": boolean,"updated_at": string
+                    "archived_at": string | null,"created_at": string,"created_by": string,"default_currency": string,"description": string | null,"group_type": string,"id": string,"name": string,"simplify_debts": boolean,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "archived_at"?: string | null,"created_at"?: string,"created_by": string,"default_currency"?: string,"description"?: string | null,"id"?: string,"name": string,"simplify_debts"?: boolean,"updated_at"?: string
+                    "archived_at"?: string | null,"created_at"?: string,"created_by": string,"default_currency"?: string,"description"?: string | null,"group_type"?: string,"id"?: string,"name": string,"simplify_debts"?: boolean,"updated_at"?: string
                   }
                   Update: {
-                    "archived_at"?: string | null,"created_at"?: string,"created_by"?: string,"default_currency"?: string,"description"?: string | null,"id"?: string,"name"?: string,"simplify_debts"?: boolean,"updated_at"?: string
+                    "archived_at"?: string | null,"created_at"?: string,"created_by"?: string,"default_currency"?: string,"description"?: string | null,"group_type"?: string,"id"?: string,"name"?: string,"simplify_debts"?: boolean,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -571,7 +571,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "accept_invitation":
+            "accept_friend_request":
+{ Args: { "p_friendship_id": string }; Returns: undefined
+                           },
+"accept_invitation":
 { Args: { "p_group_id"?: string,"p_invitation_id"?: string,"p_token"?: string }; Returns: string
                            },
 "cancel_expense":
@@ -587,7 +590,7 @@ isOneToOne: false
 { Args: { "p_amount": number,"p_category"?: string,"p_currency": string,"p_description": string,"p_expense_date": string,"p_group_id": string,"p_idempotency_key": string,"p_items"?: Json,"p_ledger_entries": Json,"p_notes"?: string,"p_participants": Json,"p_payers": Json,"p_split_method": string,"p_tags"?: (string)[] }; Returns: string
                            },
 "create_group":
-{ Args: { "p_default_currency"?: string,"p_description"?: string,"p_name": string }; Returns: string
+{ Args: { "p_default_currency"?: string,"p_description"?: string,"p_group_type"?: string,"p_name": string,"p_simplify_debts"?: boolean }; Returns: string
                            },
 "create_invitation":
 { Args: { "p_expires_in_hours"?: number,"p_group_id": string,"p_invited_email"?: string,"p_max_uses"?: number }; Returns: {
@@ -596,6 +599,9 @@ isOneToOne: false
                            },
 "create_settlement":
 { Args: { "p_amount": number,"p_currency": string,"p_group_id": string,"p_idempotency_key": string,"p_method"?: string,"p_note"?: string,"p_payer_id": string,"p_receiver_id": string,"p_settled_on"?: string,"p_upi_reference"?: string }; Returns: string
+                           },
+"delete_friend_request":
+{ Args: { "p_friendship_id": string }; Returns: undefined
                            },
 "friend_balances":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -607,8 +613,18 @@ isOneToOne: false
               "amount": number,"currency": string,"user_id": string
             }[]
                            },
+"invitation_preview":
+{ Args: { "p_group_id"?: string,"p_token": string }; Returns: {
+              "expires_at": string,"group_id": string,"group_name": string,"group_type": string,"invited_email": string,"inviter_name": string,"member_count": number,"status": string
+            }[]
+                           },
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
+                           },
+"my_group_invitations":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "expires_at": string,"group_id": string,"group_name": string,"group_type": string,"invitation_id": string,"inviter_name": string
+            }[]
                            },
 "profile_cards":
 { Args: { "p_user_ids": (string)[] }; Returns: {
@@ -624,8 +640,19 @@ isOneToOne: false
 "revoke_invitation":
 { Args: { "p_invitation_id": string }; Returns: undefined
                            },
+"send_friend_request":
+{ Args: { "p_email": string }; Returns: {
+              "friend_id": string,"friendship_id": string,"status": string
+            }[]
+                           },
+"set_member_role":
+{ Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: undefined
+                           },
 "update_expense":
 { Args: { "p_amount": number,"p_category"?: string,"p_currency": string,"p_description": string,"p_expected_version": number,"p_expense_date": string,"p_expense_id": string,"p_items"?: Json,"p_ledger_entries": Json,"p_notes"?: string,"p_participants": Json,"p_payers": Json,"p_split_method": string,"p_tags"?: (string)[] }; Returns: number
+                           },
+"update_group":
+{ Args: { "p_default_currency": string,"p_description": string,"p_group_id": string,"p_group_type": string,"p_name": string,"p_simplify_debts": boolean }; Returns: undefined
                            }
           }
           Enums: {
