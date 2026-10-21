@@ -42,7 +42,7 @@
   - **Items:** each item is split equally among the people ticked for it. Weighted item assignments are supported by the engine and the database, but not by the form.
   - **Direct expenses:** only the latest 50 with a friend are listed (from the latest 100 direct expenses). There is no pagination yet.
   - **Display order:** participant order isn't stored, so the detail page lists shares by name. Rounding ties still follow the entry order used when saving.
-- **Staging:** M5 has no migration. The code isn't pushed: say if you want `staging` pushed.
+- **Staging:** M5 has no migration. `staging` was pushed on 2026-10-21 (with approval) and the Vercel preview built (Ready). Not smoke-tested in a browser: Vercel Authentication is still on.
 - **Next:** M6, balances, dashboard and settlements. Group balances already come from `group_balances()` on the Members tab; the simplify-debts suggestions and the settle-up flow are next.
 
 ### 2026-10-21 — M4 Friends, groups and invitations complete
