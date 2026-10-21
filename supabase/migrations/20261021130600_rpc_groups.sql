@@ -14,7 +14,7 @@ begin
   if p_name is null or char_length(btrim(p_name)) not between 1 and 100 then
     perform private.fail('SM422', 'Group name must be 1–100 characters');
   end if;
-  if p_default_currency is null or p_default_currency !~ '^[A-Z]{3}$' then
+  if not private.is_supported_currency(p_default_currency) then
     perform private.fail('SM422', 'Unsupported currency');
   end if;
 
@@ -63,6 +63,9 @@ begin
   if v_email is not null and v_email !~ '^[^@\s]+@[^@\s]+$' then
     perform private.fail('SM422', 'Invalid email address');
   end if;
+  -- Serialize this user's invitation creation so parallel requests cannot
+  -- both pass the rate-limit count below.
+  perform pg_advisory_xact_lock(hashtext('splitmate:create_invitation:' || v_uid::text));
   if (
     select count(*) from public.group_invitations i
      where i.created_by = v_uid and i.created_at > now() - interval '1 hour'
@@ -152,6 +155,20 @@ begin
   if v_inv.use_count >= v_inv.max_uses then
     perform private.fail('SM409', 'This invitation has already been used');
   end if;
+  -- An invitation is only as valid as its creator's membership: a member who
+  -- leaves or is removed cannot bring anyone in, including themselves.
+  if not exists (
+    select 1 from public.group_members m
+     where m.group_id = v_inv.group_id and m.user_id = v_inv.created_by and m.left_at is null
+  ) then
+    perform private.fail('SM409', 'This invitation is no longer valid');
+  end if;
+  -- An invitation addressed to an email proves nothing until that email is confirmed.
+  if v_inv.invited_email is not null and not exists (
+    select 1 from auth.users u where u.id = v_uid and u.email_confirmed_at is not null
+  ) then
+    perform private.fail('SM403', 'Confirm your email address before accepting this invitation');
+  end if;
 
   insert into public.group_members (group_id, user_id, role)
   values (v_inv.group_id, v_uid, 'member')
@@ -206,13 +223,18 @@ end;
 $$;
 
 -- Shared by leave_group and remove_group_member: marks the membership as left
--- (balance must be zero in every currency) and keeps the group with an admin.
+-- (balance must be zero in every currency), revokes the member's open
+-- invitations, cancels their pending settlements in the group (which have no
+-- balance effect but could otherwise be confirmed or acted on later), and keeps
+-- the group with an admin.
 create function private.end_membership(p_group_id uuid, p_user_id uuid, p_removed_by uuid) returns void
 language plpgsql security definer set search_path = ''
 as $$
 declare
   v_member public.group_members%rowtype;
   v_successor uuid;
+  v_settlement public.settlements%rowtype;
+  v_actor uuid := coalesce(p_removed_by, p_user_id);
 begin
   select * into v_member from public.group_members m
    where m.group_id = p_group_id and m.user_id = p_user_id and m.left_at is null
@@ -227,6 +249,25 @@ begin
   update public.group_members
      set left_at = now(), removed_by = p_removed_by
    where id = v_member.id;
+
+  update public.group_invitations
+     set revoked_at = now()
+   where group_id = p_group_id and created_by = p_user_id and revoked_at is null;
+
+  for v_settlement in
+    update public.settlements
+       set status = 'cancelled', cancelled_at = now(), cancelled_by = v_actor
+     where group_id = p_group_id and status = 'pending' and p_user_id in (payer_id, receiver_id)
+    returning *
+  loop
+    perform private.audit(v_actor, 'settlement.cancelled', 'settlement', v_settlement.id, p_group_id,
+                          jsonb_build_object('status', 'pending'), private.settlement_data(v_settlement));
+    -- Both parties are told (notify skips whoever is acting).
+    perform private.notify(v_settlement.payer_id, 'settlement_cancelled', v_actor, p_group_id, null,
+                           v_settlement.id, private.settlement_data(v_settlement));
+    perform private.notify(v_settlement.receiver_id, 'settlement_cancelled', v_actor, p_group_id, null,
+                           v_settlement.id, private.settlement_data(v_settlement));
+  end loop;
 
   -- If the last admin left, the longest-standing remaining member becomes admin.
   if v_member.role = 'admin' and not exists (

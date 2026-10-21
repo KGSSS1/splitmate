@@ -25,11 +25,14 @@ begin
   if p_amount is null or p_amount < 1 or p_amount > 9007199254740991 then
     perform private.fail('SM422', 'Amount must be a positive whole number of minor units');
   end if;
-  if p_currency is null or p_currency !~ '^[A-Z]{3}$' then
+  if not private.is_supported_currency(p_currency) then
     perform private.fail('SM422', 'Unsupported currency');
   end if;
   if p_expense_date is null then
     perform private.fail('SM422', 'Expense date is required');
+  end if;
+  if p_expense_date < date '2000-01-01' or p_expense_date > current_date + 366 then
+    perform private.fail('SM422', 'Expense date must be between 2000 and one year from today');
   end if;
   if p_split_method is null or p_split_method not in ('equal', 'exact', 'percentage', 'shares', 'itemized') then
     perform private.fail('SM422', 'Unknown split method');
@@ -131,6 +134,17 @@ begin
   end if;
   if p_expected_version is null or v_expense.version <> p_expected_version then
     perform private.fail('SM409', 'This expense was changed by someone else; reload and try again');
+  end if;
+  -- History involving someone who has left is frozen: changing it would give a
+  -- former member a balance they can no longer settle.
+  if v_expense.group_id is not null and exists (
+    select 1 from unnest(private.expense_version_users(v_expense.id, v_expense.version)) as u(user_id)
+     where not exists (
+       select 1 from public.group_members m
+        where m.group_id = v_expense.group_id and m.user_id = u.user_id and m.left_at is null
+     )
+  ) then
+    perform private.fail('SM409', 'Someone in this expense has left the group, so it can no longer be changed');
   end if;
   return v_expense;
 end;

@@ -13,6 +13,7 @@ Docker must be running.
 | Run the pgTAP tests | `npm run db:test` |
 | Regenerate TypeScript types after a migration | `npm run db:types` → `src/types/database.types.ts` |
 | Lint functions (plpgsql_check) | `npx supabase db lint --local --level warning` |
+| Security and performance advisors | `npx supabase db advisors --local --type all --level warn` |
 | Stop the stack | `npm run db:stop` |
 
 `db:reset` only touches the local database. Never run `supabase db reset --linked` or `supabase db push` without explicit approval (see `CLAUDE.md`).
@@ -42,7 +43,7 @@ The seed builds its data through the same RPC functions the app uses, so it is a
 
 Conventions:
 - **Keys and timestamps:** UUID primary keys and `created_at`. Mutable tables also have `updated_at`, maintained by a trigger. Insert-only tables (versioned expense rows, `ledger_entries`, `audit_events`) have only `created_at`.
-- **Amounts:** stored with the `minor_amount` domain, a `bigint` in the range 1..9,007,199,254,740,991 (the TypeScript safe-integer limit). Participant shares use `share_amount` (0 allowed). Currencies use `currency_code` (3 upper-case letters).
+- **Amounts:** stored with the `minor_amount` domain, a `bigint` in the range 1..9,007,199,254,740,991 (the TypeScript safe-integer limit). Participant shares use `share_amount` (0 allowed). Currencies use `currency_code`, whose check lists the supported ISO 4217 codes; it must match `src/lib/money/currencies.ts` (a unit test enforces this). Expense and settlement dates must fall between 2000 and 2100, and the expense RPCs also reject dates more than a year ahead. Tags are limited to 20, each 1–40 characters.
 - **Status fields** are `text` with `CHECK` constraints, not enums.
 - **Expense versions:** payer, participant and item rows are stored per expense version and never overwritten, so the full history of every edit is kept.
 - **Expense and settlement idempotency:** each has an `idempotency_key`, unique per creator.
@@ -66,6 +67,8 @@ Both run with the caller's rights, so RLS applies.
 - Every foreign key into financial, membership or history tables is `ON DELETE RESTRICT`. Nothing cascades from a profile or group.
 - `profiles.id` equals `auth.users.id` but has **no foreign key** to it. Account deletion (M9) anonymizes the profile (name "Deleted user", email and avatar removed, `deleted_at` set) and then deletes the auth user. Expenses and ledger rows keep pointing at the profile, so other members' balances stay correct.
 - A member can leave, or be removed by an admin, only when their balance in the group is zero in every currency. The membership row stays (`left_at`, `removed_by`), so history remains readable. If the last admin leaves, the longest-standing remaining member becomes admin.
+- Leaving or removal also revokes the member's open invitations and cancels their pending settlements in that group; both parties are notified.
+- An expense that involves a former member can no longer be edited or cancelled. Changing it would give that person a balance they could no longer settle.
 
 ## Security model
 
@@ -86,6 +89,13 @@ Both run with the caller's rights, so RLS applies.
 - **Money writes** go only through the RPC functions below. They are `SECURITY DEFINER` with `search_path = ''`, because clients have no write privileges on those tables. Each one checks `auth.uid()` explicitly, locks the rows it changes, validates the invariants, and writes the ledger, audit event and notifications in one transaction.
 - **New tables** get no privileges by default. The default grants for `anon`/`authenticated` are revoked, so every new table needs explicit `GRANT`s and policies.
 - **Invitation tokens** are 256 random bits. They are returned once by `create_invitation`, and only their SHA-256 hash is stored.
+  - An invitation is valid only while its creator is a current member.
+  - An invitation addressed to an email requires that email to be confirmed.
+  - The 20-per-hour limit is serialized with a per-user advisory lock.
+- **Pairwise entries are checked against the payments.** Each ledger row of an expense must run from someone with a negative net (paid less than their share) to someone with a positive net. Every debtor × creditor amount must be within one minor unit of `|debt| × excess / total excess`. A client calling the RPC directly therefore cannot reroute debts, even though SQL never computes the split itself.
+- **Payload limits:** at most 100 payers, 100 participants, 200 item lines and 10,000 ledger rows per expense; at most 200 IDs per `profile_cards` call.
+- **Former members** cannot act on group settlements, edit their old comments, or see people who joined after they left.
+- **Deleted accounts** cannot write comments, attachments or receipts, even with a token that is still valid.
 
 ### Receipts storage
 
@@ -145,5 +155,6 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `060_membership` | Leave and remove rules across currencies, what a removed member can no longer do, admin handover, rejoining |
 | `070_storage` | Receipt upload, read and delete permissions |
 | `080_balances` | Group and friend balances, currency separation, ledger sums to zero |
+| `090_security_review` | Regression tests for the findings of the M2 security review (rerouted debts, rejoining after removal, frozen history, and more) |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

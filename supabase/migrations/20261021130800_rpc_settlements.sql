@@ -67,7 +67,7 @@ begin
   if p_amount is null or p_amount < 1 or p_amount > 9007199254740991 then
     perform private.fail('SM422', 'Amount must be a positive whole number of minor units');
   end if;
-  if p_currency is null or p_currency !~ '^[A-Z]{3}$' then
+  if not private.is_supported_currency(p_currency) then
     perform private.fail('SM422', 'Unsupported currency');
   end if;
   if p_method is null or p_method not in ('cash', 'bank_transfer', 'upi', 'other') then
@@ -117,6 +117,13 @@ begin
   select * into v_settlement from public.settlements s where s.id = p_settlement_id for update;
   if not found or p_actor not in (v_settlement.payer_id, v_settlement.receiver_id) then
     perform private.fail('SM404', 'Settlement not found');
+  end if;
+  -- Former members cannot act on the group's settlements (SPEC §8).
+  if v_settlement.group_id is not null and not exists (
+    select 1 from public.group_members m
+     where m.group_id = v_settlement.group_id and m.user_id = p_actor and m.left_at is null
+  ) then
+    perform private.fail('SM403', 'You are no longer a member of this group');
   end if;
   return v_settlement;
 end;

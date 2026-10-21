@@ -148,6 +148,9 @@ begin
   if jsonb_typeof(p_participants) is distinct from 'array' or jsonb_array_length(p_participants) = 0 then
     perform private.fail('SM422', 'At least one participant is required');
   end if;
+  if jsonb_array_length(p_payers) > 100 or jsonb_array_length(p_participants) > 100 then
+    perform private.fail('SM422', 'An expense can have at most 100 payers and 100 participants');
+  end if;
   for v_row in select value from jsonb_array_elements(p_payers || p_participants) loop
     v_users := v_users || private.json_uuid(v_row, 'user_id');
   end loop;
@@ -349,6 +352,9 @@ begin
     if jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items) = 0 then
       perform private.fail('SM422', 'An itemized expense needs items');
     end if;
+    if jsonb_array_length(p_items) > 200 then
+      perform private.fail('SM422', 'An itemized expense can have at most 200 lines');
+    end if;
   elsif p_items is not null and jsonb_typeof(p_items) <> 'null' and p_items <> '[]'::jsonb then
     perform private.fail('SM422', 'Only itemized expenses have items');
   end if;
@@ -423,6 +429,9 @@ begin
   if jsonb_typeof(p_ledger_entries) is distinct from 'array' then
     perform private.fail('SM422', 'Ledger entries are required');
   end if;
+  if jsonb_array_length(p_ledger_entries) > 10000 then
+    perform private.fail('SM422', 'Too many ledger entries');
+  end if;
   v_involved := v_payer_users || v_participant_users;
   for v_row in select value from jsonb_array_elements(p_ledger_entries) loop
     v_debtor := private.json_uuid(v_row, 'debtor_id');
@@ -469,6 +478,56 @@ begin
   if v_mismatches > 0 then
     perform private.fail('SM422', 'Ledger entries do not reconcile with the payers and shares');
   end if;
+
+  -- Each entry must run from someone who owes (paid less than their share) to
+  -- someone who is owed (paid more), and every debtor × creditor cell must be
+  -- within one minor unit of its exact proportional value
+  --   |net_debtor| × net_creditor / Σ positive nets
+  -- (zero when the pair has no entry). This verifies the allocation made by
+  -- src/lib/accounting without re-implementing it, so a client calling the RPC
+  -- directly cannot reroute debts through other people.
+  with nets as (
+    select d.user_id, sum(d.delta) as net
+      from (
+        select p.user_id, p.amount::numeric as delta
+          from public.expense_payers p where p.expense_id = p_expense_id and p.version = p_version
+        union all
+        select p.user_id, -p.amount
+          from public.expense_participants p where p.expense_id = p_expense_id and p.version = p_version
+      ) d
+     group by d.user_id
+  ),
+  owed as (
+    select sum(n.net) as total from nets n where n.net > 0
+  ),
+  cells as (
+    select debtor.user_id as debtor_id, creditor.user_id as creditor_id,
+           -debtor.net as debt, creditor.net as excess
+      from nets debtor
+     cross join nets creditor
+     where debtor.net < 0 and creditor.net > 0
+  ),
+  entries as (
+    select l.debtor_id, l.creditor_id, l.amount::numeric as amount
+      from public.ledger_entries l
+     where l.expense_id = p_expense_id and l.source_version = p_version and l.entry_type = 'charge'
+  )
+  select count(*) into v_mismatches
+    from (
+      select 1
+        from entries e
+       where not exists (select 1 from cells c where c.debtor_id = e.debtor_id and c.creditor_id = e.creditor_id)
+      union all
+      select 1
+        from cells c
+       cross join owed o
+        left join entries e on e.debtor_id = c.debtor_id and e.creditor_id = c.creditor_id
+       where abs(coalesce(e.amount, 0) * o.total - c.debt * c.excess) >= o.total
+    ) wrong;
+  if v_mismatches > 0 then
+    perform private.fail('SM422',
+      'Ledger entries must split each debt between the payers in proportion to what they overpaid');
+  end if;
 end;
 $$;
 
@@ -487,16 +546,12 @@ $$;
 revoke all on all functions in schema private from public, anon, authenticated;
 -- Re-grant the policy helpers revoked by the line above.
 grant execute on function
-  private.expense_version_users(uuid, integer),
   private.is_group_member(uuid),
   private.was_group_member(uuid),
   private.is_group_admin(uuid),
-  private.are_friends(uuid, uuid),
-  private.is_expense_party(uuid),
   private.can_view_expense(uuid),
   private.can_edit_expense(uuid),
   private.can_view_settlement(uuid),
   private.can_view_recurring(uuid),
-  private.shares_context_with(uuid),
   private.receipt_expense_id(text)
 to authenticated;

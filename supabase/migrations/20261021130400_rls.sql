@@ -87,12 +87,16 @@ $$;
 
 -- Who may comment on or attach receipts to an expense: current group members,
 -- or for a direct expense the two friends while they are still friends.
+-- A deleted (anonymized) account can no longer write, even with a valid token.
 create function private.can_edit_expense(p_expense_id uuid) returns boolean
 language sql stable security definer set search_path = ''
 as $$
   select exists (
     select 1 from public.expenses e
      where e.id = p_expense_id
+       and exists (
+         select 1 from public.profiles p where p.id = (select auth.uid()) and p.deleted_at is null
+       )
        and case
              when e.group_id is not null then private.is_group_member(e.group_id)
              else exists (
@@ -133,7 +137,8 @@ as $$
 $$;
 
 -- Another user is visible to the caller if they are friends (or have a pending
--- request) or have ever shared a group.
+-- request) or were in a group at the same time. A former member does not see
+-- people who joined after they left.
 create function private.shares_context_with(p_user_id uuid) returns boolean
 language sql stable security definer set search_path = ''
 as $$
@@ -147,6 +152,8 @@ as $$
         select 1 from public.group_members mine
           join public.group_members theirs on theirs.group_id = mine.group_id
          where mine.user_id = (select auth.uid()) and theirs.user_id = p_user_id
+           and mine.joined_at <= coalesce(theirs.left_at, 'infinity')
+           and theirs.joined_at <= coalesce(mine.left_at, 'infinity')
       );
 $$;
 
@@ -160,19 +167,19 @@ as $$
          end;
 $$;
 
+-- Only the helpers that policies call directly are executable by clients; they
+-- answer questions about the caller only. Helpers that take arbitrary user or
+-- expense IDs (expense_version_users, are_friends, is_expense_party,
+-- shares_context_with) are used only inside SECURITY DEFINER functions.
 revoke all on all functions in schema private from public, anon, authenticated;
 grant execute on function
-  private.expense_version_users(uuid, integer),
   private.is_group_member(uuid),
   private.was_group_member(uuid),
   private.is_group_admin(uuid),
-  private.are_friends(uuid, uuid),
-  private.is_expense_party(uuid),
   private.can_view_expense(uuid),
   private.can_edit_expense(uuid),
   private.can_view_settlement(uuid),
   private.can_view_recurring(uuid),
-  private.shares_context_with(uuid),
   private.receipt_expense_id(text)
 to authenticated;
 
@@ -292,9 +299,11 @@ create policy comments_select on public.comments for select to authenticated
   using (private.can_view_expense(expense_id));
 create policy comments_insert on public.comments for insert to authenticated
   with check (author_id = (select auth.uid()) and private.can_edit_expense(expense_id));
+-- Editing or soft-deleting your own comment also requires being able to edit the
+-- expense, so removed members cannot change what they wrote.
 create policy comments_update_own on public.comments for update to authenticated
-  using (author_id = (select auth.uid()) and deleted_at is null)
-  with check (author_id = (select auth.uid()));
+  using (author_id = (select auth.uid()) and deleted_at is null and private.can_edit_expense(expense_id))
+  with check (author_id = (select auth.uid()) and private.can_edit_expense(expense_id));
 
 create policy notifications_select_own on public.notifications for select to authenticated
   using (user_id = (select auth.uid()));

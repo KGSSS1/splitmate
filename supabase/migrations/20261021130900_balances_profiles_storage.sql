@@ -33,7 +33,8 @@ as $$
    order by 1, 2;
 $$;
 
--- Public fields (name, avatar) of people the caller shares a group or friendship with.
+-- Public fields (name, avatar) of people the caller shares a group or friendship with
+-- (at most 200 IDs per call).
 -- Deleted accounts appear as "Deleted user".
 create function public.profile_cards(p_user_ids uuid[])
 returns table (id uuid, display_name text, avatar_url text)
@@ -43,7 +44,7 @@ as $$
          case when p.deleted_at is null then p.display_name else 'Deleted user' end,
          case when p.deleted_at is null then p.avatar_url end
     from public.profiles p
-   where p.id = any (p_user_ids)
+   where p.id = any (p_user_ids[1:200])
      and (select auth.uid()) is not null
      and private.shares_context_with(p.id)
    order by p.id;

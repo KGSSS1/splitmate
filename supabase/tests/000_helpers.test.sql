@@ -7,7 +7,7 @@ grant usage on schema tests to anon, authenticated;
 
 -- Deterministic user IDs from readable names.
 create or replace function tests.uid(p_name text) returns uuid
-language sql immutable
+language sql immutable set search_path = ''
 as $$
   select md5('splitmate-test:' || p_name)::uuid;
 $$;
@@ -33,7 +33,7 @@ $$;
 -- Act as a signed-in user for the rest of the transaction (like a request with their JWT).
 -- Use `reset role;` to return to postgres.
 create or replace function tests.authenticate_as(p_name text) returns void
-language plpgsql
+language plpgsql set search_path = ''
 as $$
 begin
   perform set_config('role', 'authenticated', true);
@@ -43,7 +43,7 @@ end;
 $$;
 
 create or replace function tests.authenticate_anon() returns void
-language plpgsql
+language plpgsql set search_path = ''
 as $$
 begin
   perform set_config('role', 'anon', true);
@@ -107,7 +107,7 @@ $$;
 
 -- tests.amounts('alice', '90000', 'bob', '0') → [{"user_id": …, "amount": 90000}, …]
 create or replace function tests.amounts(variadic p_pairs text[]) returns jsonb
-language plpgsql stable
+language plpgsql stable set search_path = ''
 as $$
 declare
   v_result jsonb := '[]'::jsonb;
@@ -122,7 +122,7 @@ $$;
 
 -- tests.debts('bob', 'alice', '30000', …) → [{"debtor_id": bob, "creditor_id": alice, "amount": 30000}, …]
 create or replace function tests.debts(variadic p_triples text[]) returns jsonb
-language plpgsql stable
+language plpgsql stable set search_path = ''
 as $$
 declare
   v_result jsonb := '[]'::jsonb;
@@ -141,7 +141,7 @@ $$;
 create or replace function tests.add_equal_expense(
   p_key text, p_group uuid, p_payer text, p_amount bigint, p_people text[], p_currency text default 'INR'
 ) returns uuid
-language plpgsql
+language plpgsql set search_path = ''
 as $$
 declare
   v_share bigint := p_amount / cardinality(p_people);
@@ -166,7 +166,7 @@ $$;
 
 -- Simulates the Storage API's delete permission for direct SQL deletes in tests.
 create or replace function tests.allow_storage_delete() returns void
-language sql
+language sql set search_path = ''
 as $$
   select set_config('storage.allow_delete_query', 'true', true);
 $$;

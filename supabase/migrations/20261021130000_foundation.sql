@@ -12,9 +12,15 @@ create domain public.minor_amount as bigint
 create domain public.share_amount as bigint
   check (value >= 0 and value <= 9007199254740991);
 
--- ISO 4217 code; the supported list lives in src/lib/money/currencies.ts.
+-- Supported ISO 4217 codes. Must match CURRENCIES in src/lib/money/currencies.ts
+-- (tests/unit/money/currency-sync.test.ts checks this).
 create domain public.currency_code as text
-  check (value ~ '^[A-Z]{3}$');
+  constraint currency_code_supported check (value in (
+    'INR', 'USD', 'EUR', 'GBP', 'AED', 'AUD', 'BDT', 'BRL', 'CAD', 'CHF', 'CNY', 'CZK',
+    'DKK', 'EGP', 'HKD', 'IDR', 'ILS', 'KES', 'LKR', 'MXN', 'MYR', 'NGN', 'NOK', 'NPR',
+    'NZD', 'PHP', 'PKR', 'PLN', 'QAR', 'SAR', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'ZAR',
+    'CLP', 'ISK', 'JPY', 'KRW', 'UGX', 'VND', 'BHD', 'JOD', 'KWD', 'OMR', 'TND'
+  ));
 
 create domain public.notification_type as text
   check (value in (
@@ -49,9 +55,36 @@ begin
 end;
 $$;
 
--- Tables in public are not readable or writable by API roles unless a later
--- migration grants it explicitly (Supabase's defaults grant everything).
+-- True for a code in the currency_code domain's list (single source of the list in SQL).
+create function private.is_supported_currency(p_code text) returns boolean
+language plpgsql immutable set search_path = ''
+as $$
+begin
+  if p_code is null then
+    return false;
+  end if;
+  perform p_code::public.currency_code;
+  return true;
+exception
+  when check_violation then
+    return false;
+end;
+$$;
+
+-- At most 20 tags of 1–40 characters each.
+create function private.tags_valid(p_tags text[]) returns boolean
+language sql immutable set search_path = ''
+as $$
+  select cardinality(p_tags) <= 20
+     and not exists (select 1 from unnest(p_tags) as t where t is null or char_length(t) not between 1 and 40);
+$$;
+
+-- Nothing in public is readable, writable or executable by API roles unless a
+-- later migration grants it explicitly (Supabase's defaults grant everything).
+-- The first line removes PostgreSQL's built-in EXECUTE-to-PUBLIC default, which a
+-- per-schema statement cannot revoke.
+alter default privileges for role postgres revoke execute on functions from public;
 alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
-alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
-alter default privileges for role postgres in schema private revoke execute on functions from public;
+alter default privileges for role postgres in schema public revoke execute on functions from anon, authenticated;
+revoke execute on all functions in schema private from public;

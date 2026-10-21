@@ -2,6 +2,31 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21 — M2 security review fixes
+
+- An independent security review of the M2 migrations found 10 issues: 3 high, 1 medium, 6 low.
+  - **High: rerouted debts.** A member calling `create_expense` directly could route debts through uninvolved people. Pairwise rows are now checked to be proportional to the payments.
+  - **High: rejoining through an old invitation.** A removed member could rejoin with an invitation they had created earlier. Leaving or removal now revokes the member's invitations, and an invitation needs its creator to still be a member.
+  - **High: balances for former members.** Editing or cancelling an old expense could give a former member a balance. History involving a former member is now frozen.
+  - **Low:**
+    - Removed members could still edit comments and act on pending settlements.
+    - The invitation rate limit could be raced.
+    - Default privileges didn't revoke the built-in PUBLIC execute grant.
+    - Removed members still got group notifications.
+    - `profile_cards` showed later joiners.
+    - Input checks were loose: unknown currencies, unlimited tag length, implausible dates.
+  - **Also fixed** from the plausible and hardening list:
+    - Email invitations need a confirmed email.
+    - Deleted accounts can't write.
+    - Payload size caps.
+    - Arbitrary-ID helpers are no longer executable by clients.
+    - Test helpers pin `search_path`.
+- The fixes were made in the original M2 migrations, which have never been applied outside the local database. `090_security_review.test.sql` has 31 regression tests, and `tests/unit/money/currency-sync.test.ts` keeps the SQL and TypeScript currency lists in sync. `supabase db lint` and `supabase db advisors` (warn level) are clean.
+- **Behaviour to know for M5/M6:** expenses involving a former member can't be edited or cancelled (SM409). Leaving cancels the leaver's pending group settlements.
+- **Still open (decisions, not bugs):**
+  - Local `enable_confirmations = false` in `supabase/config.toml`. M3 should turn on email confirmation (Mailpit locally) per SPEC §8.
+  - Friendships made by joining a group are never removed, so a removed member can still create direct expenses with former group-mates. SPEC §2 allows this.
+
 ### 2026-10-21 — M2 Database schema, RLS and transactional functions complete
 
 - **Done:** 10 migrations in `supabase/migrations/`:
