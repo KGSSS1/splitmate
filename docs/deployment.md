@@ -82,7 +82,10 @@ Run these from the repo folder. The Supabase CLI is a dev dependency (`npx supab
 Then check in the dashboard:
 
 - **Database → Migrations** lists the same 11 versions.
-- **Advisors → Security Advisor** and **Performance Advisor** show no new errors. The same checks run locally with `npx supabase db advisors --local`.
+- **Advisors** — `npx supabase db advisors --linked --type all --level warn`, or **Advisors → Security / Performance Advisor** in the dashboard — show no errors. The expected warnings are:
+  - **14 × WARN `authenticated_security_definer_function_executable`** (rule 0029): one per public RPC, plus `profile_cards`. This is intended: the RPCs are SECURITY DEFINER on purpose and check `auth.uid()` themselves (see `docs/database.md`). A new function in this list needs a review. The local CLI's advisor doesn't flag these, so the hosted run is the one to check.
+  - **INFO `unused_index`**: expected on a database that has served few or no queries. Revisit it once staging has real traffic.
+- `npx supabase db lint --linked --level warning` reports no issues.
 - **Storage** shows the private `receipts` bucket.
 
 `db push` runs `seed.sql` only with `--include-seed`. **Never** seed a hosted project: the seed users share a published password.

@@ -15,7 +15,12 @@
   - The `staging` preview builds (Ready).
   - Both `main` builds failed with "NEXT_PUBLIC_APP_URL is missing". This is expected until production exists; don't push to `main` before then.
   - Vercel Authentication is still **on**, and the Function Region is `iad1`.
-  - The Supabase staging project, migration push, auth settings and phone test are not done yet. This session has no confirmation of any of them.
+  - The Supabase staging project `splitmate-staging` (ref `vnjktzhyvfbnyfzppnkw`, ap-south-1) is linked, and all 11 migrations were pushed on 2026-10-21 without seed data.
+    - The remote migration history matches local.
+    - Lint is clean.
+    - The advisors show only the expected rule-0029 warnings (14 SECURITY DEFINER RPCs) and INFO unused-index notices.
+  - Auth settings, email templates, URL configuration and the phone test are not done yet.
+  - Pushing from a network that blocks pooler port 5432 hangs; see the troubleshooting section of `docs/deployment.md`.
 - **Fixed:** `.vercelignore` patterns are anchored to the root (`/supabase/` had been dropping `src/lib/supabase/`); `tests/unit/vercelignore.test.ts` guards this. Node is pinned to `24.x`.
 - **Code:**
   - `SUPABASE_SECRET_KEY` is optional until M9.

@@ -87,6 +87,8 @@ Both run with the caller's rights, so RLS applies.
   - comments
   - attachments
 - **Money writes** go only through the RPC functions below. They are `SECURITY DEFINER` with `search_path = ''`, because clients have no write privileges on those tables. Each one checks `auth.uid()` explicitly, locks the rows it changes, validates the invariants, and writes the ledger, audit event and notifications in one transaction.
+  - On hosted projects, Supabase's advisor rule 0029 ("Signed-In Users Can Execute SECURITY DEFINER Function") flags each of these RPCs, plus `profile_cards`, as a WARN. That is intended: `authenticated` must be able to call them, and the authorization checks live inside each function, covered by the pgTAP suite.
+  - Treat a 0029 warning on any **other** function as a real finding.
 - **New tables** get no privileges by default. The default grants for `anon`/`authenticated` are revoked, so every new table needs explicit `GRANT`s and policies.
 - **Invitation tokens** are 256 random bits. They are returned once by `create_invitation`, and only their SHA-256 hash is stored.
   - An invitation is valid only while its creator is a current member.
