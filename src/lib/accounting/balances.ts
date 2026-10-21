@@ -1,36 +1,46 @@
-import { addMinor } from "@/lib/money/amount";
+import { isMinorAmount } from "@/lib/money/amount";
 
+import { AccountingError } from "./errors";
+import { requireLedgerEntry } from "./ledger";
 import type { Balance, LedgerEntry, UserId } from "./types";
 
 /**
  * Balances derived from the pairwise ledger (SPEC §6). Positive = others owe
  * this person; negative = this person owes. Currencies are never mixed.
  * Zero balances are omitted; results are sorted for stable output.
+ *
+ * Sums are accumulated in BigInt and range-checked once at the end, so the
+ * result never depends on the order of the entries.
  */
 
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-function add(map: Map<string, number>, key: string, delta: number) {
-  map.set(key, addMinor(map.get(key) ?? 0, delta));
+function toSafe(total: bigint): number {
+  const value = Number(total);
+  if (!isMinorAmount(value) || BigInt(value) !== total) {
+    throw new AccountingError("OVERFLOW", "Balance exceeds the maximum supported amount");
+  }
+  return value;
+}
+
+function accumulate<K>(totals: Map<string, { key: K; total: bigint }>, id: string, key: K, delta: number) {
+  const row = totals.get(id) ?? { key, total: 0n };
+  row.total += BigInt(delta);
+  totals.set(id, row);
 }
 
 /** Net position per user and currency. */
 export function netBalances(entries: readonly LedgerEntry[]): Balance[] {
-  const totals = new Map<string, number>();
-  const keys = new Map<string, { userId: UserId; currency: string }>();
-  for (const { debtorId, creditorId, amount, currency } of entries) {
-    for (const [userId, delta] of [
-      [creditorId, amount],
-      [debtorId, -amount],
-    ] as const) {
-      const key = JSON.stringify([currency, userId]);
-      keys.set(key, { userId, currency });
-      add(totals, key, delta);
-    }
+  const totals = new Map<string, { key: { userId: UserId; currency: string }; total: bigint }>();
+  for (const entry of entries) {
+    requireLedgerEntry(entry);
+    const { debtorId, creditorId, amount, currency } = entry;
+    accumulate(totals, JSON.stringify([currency, creditorId]), { userId: creditorId, currency }, amount);
+    accumulate(totals, JSON.stringify([currency, debtorId]), { userId: debtorId, currency }, -amount);
   }
-  return [...totals]
-    .filter(([, amount]) => amount !== 0)
-    .map(([key, amount]) => ({ ...keys.get(key)!, amount }))
+  return [...totals.values()]
+    .filter(({ total }) => total !== 0n)
+    .map(({ key, total }) => ({ ...key, amount: toSafe(total) }))
     .sort((a, b) => compare(a.currency, b.currency) || compare(a.userId, b.userId));
 }
 
@@ -51,27 +61,19 @@ export interface PairBalance {
  * across every group and direct expense, per currency.
  */
 export function pairBalances(entries: readonly LedgerEntry[], userId: UserId): PairBalance[] {
-  const totals = new Map<string, number>();
-  const keys = new Map<string, { counterpartyId: UserId; currency: string }>();
-  for (const { debtorId, creditorId, amount, currency } of entries) {
-    let counterpartyId: UserId;
-    let delta: number;
+  const totals = new Map<string, { key: { counterpartyId: UserId; currency: string }; total: bigint }>();
+  for (const entry of entries) {
+    requireLedgerEntry(entry);
+    const { debtorId, creditorId, amount, currency } = entry;
     if (creditorId === userId) {
-      counterpartyId = debtorId;
-      delta = amount;
+      accumulate(totals, JSON.stringify([debtorId, currency]), { counterpartyId: debtorId, currency }, amount);
     } else if (debtorId === userId) {
-      counterpartyId = creditorId;
-      delta = -amount;
-    } else {
-      continue;
+      accumulate(totals, JSON.stringify([creditorId, currency]), { counterpartyId: creditorId, currency }, -amount);
     }
-    const key = JSON.stringify([counterpartyId, currency]);
-    keys.set(key, { counterpartyId, currency });
-    add(totals, key, delta);
   }
-  return [...totals]
-    .filter(([, amount]) => amount !== 0)
-    .map(([key, amount]) => ({ ...keys.get(key)!, amount }))
+  return [...totals.values()]
+    .filter(({ total }) => total !== 0n)
+    .map(({ key, total }) => ({ ...key, amount: toSafe(total) }))
     .sort((a, b) => compare(a.counterpartyId, b.counterpartyId) || compare(a.currency, b.currency));
 }
 

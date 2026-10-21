@@ -24,6 +24,7 @@ describe("idempotency", () => {
       version: 1,
       groupId: "g",
       currency: "INR",
+      total: 9001,
       payers: [
         { userId: "a", amount: 6001 },
         { userId: "b", amount: 3000 },

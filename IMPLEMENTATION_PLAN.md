@@ -8,8 +8,9 @@
 - **Next:** M2 — migrations, RLS, RPC functions that *validate* this engine's output (payers/shares sums, pairwise entries reconcile with shares), seed data, pgTAP tests. Ledger entry shape and settlement transitions to mirror are in `docs/architecture.md`.
 - **Decisions to keep in mind for M2:**
   - Ledger amounts are always positive; a reversal swaps debtor/creditor and has `entry_type = 'reversal'`, linked to the version it reverses. Settlement entries use version 1.
-  - A payer may withdraw (cancel) their own *pending* settlement; the receiver rejects instead. SPEC doesn't say; revisit if you disagree.
+  - A payer may withdraw (cancel) their own *pending* settlement; the receiver rejects instead. SPEC doesn't say; confirmed by the user on 2026-10-21. M2's settlement RPC must allow it.
   - Max amount = `Number.MAX_SAFE_INTEGER` minor units; add a matching `CHECK (amount <= 9007199254740991)` in M2.
+  - After the independent review (2026-10-21): `buildExpenseEntries` takes the expense `total`; `amendExpenseEntries(current, next)` and `cancelExpenseEntries(current)` take the stored *version input* (payers + shares) and rebuild its charges to reverse. M2's edit/cancel RPCs should likewise check that the reversals match the stored ledger rows of the current version exactly.
 - **Known issues:** `npm run db:test` was not re-run at the end of M1 because Docker Desktop was not running (M1 changed no SQL). Earlier M0 notes below still apply.
 
 ### 2026-10-21 — M0 Foundation complete

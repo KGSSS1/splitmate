@@ -76,4 +76,10 @@ describe("settlement lifecycle (SPEC §2, §11)", () => {
       "NOT_A_PARTY",
     );
   });
+
+  // Review finding 8: an unknown status (e.g. bad data from the database) returned undefined.
+  it("rejects an unknown status instead of returning nothing", () => {
+    const bogus = { ...parties, status: "bogus" as unknown as "pending" };
+    expectCode(() => transitionSettlement(bogus, "confirm", "receiver"), "INVALID_TRANSITION");
+  });
 });

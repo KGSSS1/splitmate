@@ -51,7 +51,7 @@ const expenseArb = fc
     const payerRows: Payer[] = payers
       .map((userId, i) => ({ userId, amount: payerAmounts[i] ?? 0 }))
       .filter((p) => p.amount > 0);
-    return { amount, shares, payers: payerRows, groupId, currency };
+    return { total: amount, shares, payers: payerRows, groupId, currency };
   });
 
 function netsOf(entries: LedgerEntry[]) {
@@ -201,11 +201,12 @@ describe("accounting properties", () => {
   it("editing or cancelling an expense fully reverses its prior effect", () => {
     fc.assert(
       fc.property(expenseArb, expenseArb, (before, after) => {
-        const v1 = buildExpenseEntries({ expenseId: "e", version: 1, ...before });
+        const v1Input = { expenseId: "e", version: 1, ...before };
+        const v1 = buildExpenseEntries(v1Input);
         const v2Input = { expenseId: "e", version: 2, ...after };
-        const amendment = amendExpenseEntries(v1, v2Input);
+        const amendment = amendExpenseEntries(v1Input, v2Input);
         expect(netsOf([...v1, ...amendment])).toEqual(netsOf(buildExpenseEntries(v2Input)));
-        expect(netsOf([...v1, ...cancelExpenseEntries(v1)])).toEqual([]);
+        expect(netsOf([...v1, ...cancelExpenseEntries(v1Input)])).toEqual([]);
       }),
     );
   });

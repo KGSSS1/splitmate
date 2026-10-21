@@ -97,6 +97,7 @@ describe("simplifyDebts", () => {
         version: 1,
         groupId: "g",
         currency: "INR",
+        total: 90000,
         payers: [{ userId: "a", amount: 90000 }],
         shares: splitEqual(90000, ["a", "b", "c"]),
       }),
@@ -120,5 +121,39 @@ describe("simplifyDebts", () => {
     expect(() => simplifyDebts([inr("a", 100), inr("b", -99)])).toThrow(AccountingError);
     expect(() => simplifyDebts([inr("a", 100), inr("a", -100)])).toThrow(AccountingError);
     expect(() => simplifyDebts([inr("a", 0.5), inr("b", -0.5)])).toThrow(AccountingError);
+  });
+
+  // Review finding 6: "inr" and "INR" became separate buckets, and unknown codes passed through.
+  it("rejects unknown or mis-cased currency codes", () => {
+    for (const currency of ["inr", "XYZ"]) {
+      expect(() =>
+        simplifyDebts([
+          { userId: "a", currency, amount: 5 },
+          { userId: "b", currency, amount: -5 },
+        ]),
+      ).toThrow(expect.objectContaining({ code: "UNKNOWN_CURRENCY" }));
+    }
+  });
+
+  it("handles JPY and KWD balances in their own minor units", () => {
+    expect(
+      simplifyDebts([
+        { userId: "a", currency: "JPY", amount: 67 },
+        { userId: "b", currency: "JPY", amount: -67 },
+        { userId: "a", currency: "KWD", amount: -1234 },
+        { userId: "b", currency: "KWD", amount: 1234 },
+      ]),
+    ).toEqual([
+      { fromUserId: "b", toUserId: "a", amount: 67, currency: "JPY" },
+      { fromUserId: "a", toUserId: "b", amount: 1234, currency: "KWD" },
+    ]);
+  });
+
+  it("settles balances near the safe-integer limit exactly", () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    expect(simplifyDebts([inr("a", max), inr("b", -max + 1), inr("c", -1)])).toEqual([
+      { fromUserId: "b", toUserId: "a", amount: max - 1, currency: "INR" },
+      { fromUserId: "c", toUserId: "a", amount: 1, currency: "INR" },
+    ]);
   });
 });

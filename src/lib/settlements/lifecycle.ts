@@ -74,5 +74,8 @@ export function transitionSettlement(
     case "rejected":
     case "cancelled":
       throw invalid();
+    default:
+      // Status values can come from the database; never fall through on an unknown one.
+      throw invalid();
   }
 }

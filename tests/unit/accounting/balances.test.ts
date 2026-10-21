@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { groupBalances, netBalances, pairBalance, pairBalances } from "@/lib/accounting/balances";
+import { AccountingError } from "@/lib/accounting/errors";
 import { buildExpenseEntries, buildSettlementEntries } from "@/lib/accounting/ledger";
 import { splitEqual } from "@/lib/accounting/splits";
 import type { LedgerEntry } from "@/lib/accounting/types";
@@ -15,6 +16,7 @@ function expense(id: string, groupId: string | null, currency: string, payer: st
     version: 1,
     groupId,
     currency,
+    total,
     payers: [{ userId: payer, amount: total }],
     shares: splitEqual(total, users),
   });
@@ -99,6 +101,53 @@ describe("balances", () => {
 
   it("throws instead of overflowing", () => {
     const huge = expense("big", "g", "INR", A, Number.MAX_SAFE_INTEGER, [B]);
-    expect(() => netBalances([...huge, ...huge])).toThrow();
+    expect(() => netBalances([...huge, ...huge])).toThrow(AccountingError);
+    expect(() => pairBalances([...huge, ...huge], A)).toThrow(AccountingError);
+  });
+
+  // Review finding 5: intermediate sums used to be range-checked, so the same set of entries
+  // succeeded or threw depending on their order.
+  it("gives the same result regardless of entry order, even near the limit", () => {
+    const entry = (debtorId: string, creditorId: string, amount: number): LedgerEntry => ({
+      debtorId,
+      creditorId,
+      amount,
+      currency: "INR",
+      groupId: "g",
+      source: { kind: "expense", id: "e", version: 1 },
+      entryType: "charge",
+    });
+    const max = Number.MAX_SAFE_INTEGER;
+    const first = [entry("y", "x", max), entry("x", "z", 1), entry("z", "x", 1)];
+    const second = [entry("y", "x", max), entry("z", "x", 1), entry("x", "z", 1)];
+    expect(netBalances(second)).toEqual(netBalances(first));
+    expect(netBalances(first)).toEqual([
+      { userId: "x", currency: "INR", amount: max },
+      { userId: "y", currency: "INR", amount: -max },
+    ]);
+    expect(pairBalances(second, "x")).toEqual(pairBalances(first, "x"));
+  });
+
+  // Review finding 4: a negative amount silently flipped the debt's direction, and a fractional
+  // amount surfaced as a misleading overflow error.
+  it("rejects malformed ledger entries", () => {
+    const [valid] = expense("e9", "g", "INR", A, 200, [A, B]);
+    for (const [bad, code] of [
+      [{ ...valid!, amount: -100 }, "INVALID_AMOUNT"],
+      [{ ...valid!, amount: 0 }, "INVALID_AMOUNT"],
+      [{ ...valid!, amount: 0.5 }, "INVALID_AMOUNT"],
+      [{ ...valid!, currency: "inr" }, "UNKNOWN_CURRENCY"],
+      [{ ...valid!, debtorId: valid!.creditorId }, "SAME_USER"],
+    ] as const) {
+      for (const fn of [() => netBalances([bad]), () => pairBalances([bad], A)]) {
+        try {
+          fn();
+          throw new Error("expected an error");
+        } catch (error) {
+          expect(error).toBeInstanceOf(AccountingError);
+          expect((error as AccountingError).code).toBe(code);
+        }
+      }
+    }
   });
 });

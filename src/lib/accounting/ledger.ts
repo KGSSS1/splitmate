@@ -1,12 +1,15 @@
 import { AccountingError, requireAmount, requireCurrency } from "./errors";
-import { allocatePairwise } from "./pairwise";
+import { allocatePairwise, validatePayers } from "./pairwise";
 import type { LedgerEntry, Payer, SettlementStatus, UserAmount } from "./types";
 
+/** One version of an expense, as stored: amount, payers and resolved shares. */
 export interface ExpenseLedgerInput {
   expenseId: string;
   version: number;
   groupId: string | null;
   currency: string;
+  /** Expense amount; payers and shares must each add up to it. */
+  total: number;
   payers: readonly Payer[];
   shares: readonly UserAmount[];
 }
@@ -17,10 +20,21 @@ function requireVersion(version: number): void {
   }
 }
 
+/** Checks a ledger row is well formed: positive safe-integer amount, known currency, two different users. */
+export function requireLedgerEntry(entry: LedgerEntry): void {
+  requireAmount(entry.amount, "Ledger entry amount");
+  requireCurrency(entry.currency);
+  if (entry.debtorId === entry.creditorId) {
+    throw new AccountingError("SAME_USER", "A ledger entry needs two different people");
+  }
+}
+
 /** Charge entries for one version of an expense (pairwise debts from payers and shares). */
 export function buildExpenseEntries(input: ExpenseLedgerInput): LedgerEntry[] {
   requireCurrency(input.currency);
   requireVersion(input.version);
+  validatePayers(input.total, input.payers);
+  // allocatePairwise also requires the shares to add up to the payers, i.e. to the total.
   return allocatePairwise(input.payers, input.shares).map((debt) => ({
     ...debt,
     currency: input.currency,
@@ -36,6 +50,7 @@ export function buildExpenseEntries(input: ExpenseLedgerInput): LedgerEntry[] {
  */
 export function reverseEntries(entries: readonly LedgerEntry[]): LedgerEntry[] {
   return entries.map((entry) => {
+    requireLedgerEntry(entry);
     if (entry.entryType !== "charge") {
       throw new AccountingError("SOURCE_MISMATCH", "Only charge entries can be reversed");
     }
@@ -43,42 +58,26 @@ export function reverseEntries(entries: readonly LedgerEntry[]): LedgerEntry[] {
   });
 }
 
-/** Checks that `entries` are the charges of one version of one expense and returns that version. */
-function requireExpenseVersion(entries: readonly LedgerEntry[], expenseId?: string): number | undefined {
-  const first = entries[0];
-  if (!first) return undefined;
-  for (const { source, entryType } of entries) {
-    if (
-      entryType !== "charge" ||
-      source.kind !== "expense" ||
-      source.id !== (expenseId ?? first.source.id) ||
-      source.version !== first.source.version
-    ) {
-      throw new AccountingError("SOURCE_MISMATCH", "Entries must be the charges of a single expense version");
-    }
-  }
-  return first.source.version;
-}
-
 /**
- * Entries for editing an expense: reversals of the current version's charges
- * followed by charges for the new version (which must be exactly one higher).
+ * Entries for editing an expense: reversals of every charge of the current
+ * version followed by charges for the next version (exactly one higher).
+ * The current version's charges are rebuilt from its stored payers and shares,
+ * so nothing can be left unreversed by passing an incomplete list.
  */
-export function amendExpenseEntries(current: readonly LedgerEntry[], next: ExpenseLedgerInput): LedgerEntry[] {
-  const currentVersion = requireExpenseVersion(current, next.expenseId);
-  if (currentVersion !== undefined && next.version !== currentVersion + 1) {
-    throw new AccountingError(
-      "INVALID_VERSION",
-      `Expected version ${currentVersion + 1}, got ${next.version}`,
-    );
+export function amendExpenseEntries(current: ExpenseLedgerInput, next: ExpenseLedgerInput): LedgerEntry[] {
+  if (current.expenseId !== next.expenseId) {
+    throw new AccountingError("SOURCE_MISMATCH", "An edit must stay on the same expense");
   }
-  return [...reverseEntries(current), ...buildExpenseEntries(next)];
+  requireVersion(current.version);
+  if (next.version !== current.version + 1) {
+    throw new AccountingError("INVALID_VERSION", `Expected version ${current.version + 1}, got ${next.version}`);
+  }
+  return [...cancelExpenseEntries(current), ...buildExpenseEntries(next)];
 }
 
-/** Entries for cancelling an expense: reversals only. */
-export function cancelExpenseEntries(current: readonly LedgerEntry[]): LedgerEntry[] {
-  requireExpenseVersion(current);
-  return reverseEntries(current);
+/** Entries for cancelling an expense: reversals of every charge of its current version. */
+export function cancelExpenseEntries(current: ExpenseLedgerInput): LedgerEntry[] {
+  return reverseEntries(buildExpenseEntries(current));
 }
 
 export interface SettlementLedgerInput {

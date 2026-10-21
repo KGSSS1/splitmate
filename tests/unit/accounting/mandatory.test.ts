@@ -22,6 +22,7 @@ describe("SPEC §7 mandatory cases", () => {
       version: 1,
       groupId: "group-1",
       currency: "INR",
+      total: 90000,
       payers: [{ userId: A, amount: 90000 }],
       shares,
     });

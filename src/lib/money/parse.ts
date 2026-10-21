@@ -12,11 +12,12 @@ export type ParseMoneyError =
 export type ParseMoneyResult = { ok: true; value: number } | { ok: false; error: ParseMoneyError };
 
 /**
- * Integer part: plain digits, or digits grouped with commas in either the
- * Indian (1,23,456) or international (123,456) style; the last group always has 3 digits.
+ * Integer part: plain digits, or digits grouped consistently in one style:
+ * Indian (1,23,45,678 — groups of 2, last group 3) or international
+ * (12,345,678 — groups of 3). Mixed grouping such as "1,234,56,789" is rejected.
  * Fraction: "." followed by digits. ".5" and "5." are accepted.
  */
-const AMOUNT_PATTERN = /^(\d+|\d{1,3}(?:,\d{2,3})*,\d{3})?(?:\.(\d*))?$/;
+const AMOUNT_PATTERN = /^(\d+|\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+)?(?:\.(\d*))?$/;
 
 /**
  * Parses a user-entered, non-negative amount like "1,23,456.78" into minor units

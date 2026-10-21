@@ -15,9 +15,9 @@ The TypeScript accounting module is the **only** implementation of split and pai
 - Every amount is an integer number of **minor units** of its currency. The exponent comes from ISO 4217 via `CURRENCIES` in `src/lib/money/currencies.ts` (INR/USD/EUR/GBP 2, JPY/KRW/VND 0, KWD/BHD/OMR/JOD/TND 3). Code never assumes 2 decimals.
 - Amounts are JavaScript `number`s restricted to safe integers (`Number.isSafeInteger`). They are not JS `bigint`, because `bigint` cannot be JSON-serialized or passed from Server to Client Components.
 - **Maximum amount:** `MAX_MINOR_AMOUNT = Number.MAX_SAFE_INTEGER = 9,007,199,254,740,991` minor units. For INR that is ₹9,00,71,99,25,47,409.91. Postgres `bigint` (max ≈ 9.2 × 10¹⁸) holds it comfortably.
-- Intermediate products (amount × basis points, amount × weight, itemized fractions) can exceed 2⁵³, so the rounding code uses `bigint` **internally** and converts back to `number` only after the result is known to be safe. Sums of balances use `addMinor`, which throws on overflow rather than losing precision.
+- Intermediate products (amount × basis points, amount × weight, itemized fractions) can exceed 2⁵³, so the rounding code uses `bigint` **internally** and converts back to `number` only after the result is known to be safe. Balance sums are accumulated in `bigint` and range-checked once per final balance, so the result never depends on entry order; an out-of-range balance throws `OVERFLOW` rather than losing precision.
 - Floating point is never used for money:
-  - `parseMoney("1,23,456.78", "INR")` parses with string and `bigint` arithmetic only. It accepts Indian or international comma grouping. Extra decimals are rejected (`TOO_MANY_DECIMALS`) unless they are trailing zeros. Signs, symbols and exponents are rejected.
+  - `parseMoney("1,23,456.78", "INR")` parses with string and `bigint` arithmetic only. It accepts plain digits, Indian grouping (`12,34,567`) or international grouping (`1,234,567`), but not a mix of the two (`1,234,56,789` is rejected). Extra decimals are rejected (`TOO_MANY_DECIMALS`) unless they are trailing zeros. Signs, symbols and exponents are rejected.
   - `formatMoney` passes an exact decimal string to `Intl.NumberFormat`. The default locale is `en-IN`.
 - Percentages are integer **basis points** (10,000 = 100%). Weighted shares are positive integers.
 
@@ -83,9 +83,10 @@ Example (SPEC §7): A pays ₹600 and B pays ₹300 for a ₹900 bill split equa
   source: { kind: "expense" | "settlement", id, version }, entryType: "charge" | "reversal" }
 ```
 
-- **Expense:** charge entries from `allocatePairwise`, linked to the expense and its version.
-- **Edit:** `amendExpenseEntries(current, next)` returns reversals of the current version's charges plus charges for version `current + 1`. A reversal swaps debtor and creditor, so amounts stay positive.
-- **Cancel:** `cancelExpenseEntries(current)` returns reversals only.
+- **Expense:** `buildExpenseEntries(input)` takes one stored version of an expense: `{ expenseId, version, groupId, currency, total, payers, shares }`. It checks that the payers and the shares each add up to `total` (a positive safe integer), then writes charge entries from `allocatePairwise`, linked to the expense and its version.
+- **Edit:** `amendExpenseEntries(current, next)` takes the current *version input*, not a list of ledger rows. It rebuilds that version's charges and reverses them all, then adds charges for `next`, which must be the same expense at version `current.version + 1`. Because the reversals are derived from the stored version, they are always complete and always in that version's currency and group. A reversal swaps debtor and creditor, so amounts stay positive.
+- **Cancel:** `cancelExpenseEntries(current)` returns reversals of every charge of the current version, and nothing else.
+- Every function that reads ledger rows (`reverseEntries`, the balance functions) rejects malformed rows: a non-positive or non-integer amount, an unknown currency, or a debtor equal to the creditor.
 - **Settlement:** one entry only when `completed`. Its direction is opposite to the debt (`debtorId = receiver`, `creditorId = payer`), so the payer's debt decreases. Pending, rejected and cancelled settlements have no entries. Cancelling a completed settlement writes its reversal.
 
 ## Balances
@@ -99,7 +100,7 @@ Example (SPEC §7): A pays ₹600 and B pays ₹300 for a ₹900 bill split equa
 | `pairBalances(entries, userId)` | friend view: raw pairwise totals with each counterparty across all groups and direct expenses, per currency |
 | `pairBalance(entries, a, b)` | one pair, per currency |
 
-Currencies are never mixed. Zero balances are omitted. Output is sorted, so it is deterministic. Within any group, balances sum to zero per currency; property tests check this.
+Currencies are never mixed, and unknown currency codes are rejected (also in `simplifyDebts`). Zero balances are omitted. Output is sorted, so it is deterministic. Within any group, balances sum to zero per currency; property tests check this.
 
 ## Debt simplification
 

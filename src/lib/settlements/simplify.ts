@@ -1,6 +1,6 @@
 import { isMinorAmount } from "@/lib/money/amount";
 
-import { AccountingError } from "@/lib/accounting/errors";
+import { AccountingError, requireCurrency } from "@/lib/accounting/errors";
 import type { Balance, UserId } from "@/lib/accounting/types";
 
 /** A suggested payment: `fromUserId` pays `toUserId`. */
@@ -36,6 +36,7 @@ function pickLargest(positions: Position[]): Position {
 export function simplifyDebts(balances: readonly Balance[]): Transfer[] {
   const byCurrency = new Map<string, Map<UserId, number>>();
   for (const { userId, currency, amount } of balances) {
+    requireCurrency(currency);
     if (!isMinorAmount(amount)) {
       throw new AccountingError("INVALID_AMOUNT", `Balance for ${userId} must be a safe integer, got ${amount}`);
     }

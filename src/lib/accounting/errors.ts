@@ -18,6 +18,7 @@ export type AccountingErrorCode =
   | "INVALID_VERSION"
   | "SOURCE_MISMATCH"
   | "UNBALANCED"
+  | "OVERFLOW"
   | "SAME_USER"
   | "NOT_A_PARTY"
   | "NOT_ALLOWED"
