@@ -19,7 +19,11 @@
     - The remote migration history matches local.
     - Lint is clean.
     - The advisors show only the expected rule-0029 warnings (14 SECURITY DEFINER RPCs) and INFO unused-index notices.
-  - Auth settings, email templates, URL configuration and the phone test are not done yet.
+  - Auth settings, URL configuration and the phone test are not done yet.
+  - Email templates can't be edited without custom SMTP, so hosted staging uses Supabase's default templates (`?code=` links).
+    - `/auth/confirm` now exchanges those codes (PKCE) and keeps the `?token_hash=` path for custom templates later.
+    - A link opened in a different browser can't be exchanged: the login page explains it, and a sign-up is confirmed anyway.
+    - Covered by `tests/e2e/default-email-links.spec.ts` and `tests/unit/auth/confirm-route.test.ts`.
   - Pushing from a network that blocks pooler port 5432 hangs; see the troubleshooting section of `docs/deployment.md`.
 - **Fixed:** `.vercelignore` patterns are anchored to the root (`/supabase/` had been dropping `src/lib/supabase/`); `tests/unit/vercelignore.test.ts` guards this. Node is pinned to `24.x`.
 - **Code:**

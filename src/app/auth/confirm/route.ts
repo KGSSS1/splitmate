@@ -25,7 +25,9 @@ const DESTINATIONS: Partial<Record<EmailOtpType, string>> = {
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
 
-  // The auth server reports expired or used links as query parameters.
+  // The auth server reports expired or used links as query parameters or in
+  // the URL fragment (#error=…), which never reaches the server: such a
+  // request has no code or token and falls through to the same message below.
   if (params.get("error") || params.get("error_code")) redirect(`${ROUTES.login}?error=link`);
 
   const tokenHash = params.get("token_hash");

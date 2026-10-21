@@ -108,21 +108,38 @@ Go to **Authentication → Sign In / Providers → Email**:
 
 Click **Save**.
 
-### Email templates
+### Email templates (optional until custom SMTP)
 
-The app verifies email links on the server with a token hash (`/auth/confirm`). The hosted default templates use `{{ .ConfirmationURL }}`, which does not work with that route, so replace two templates.
+Supabase only lets you edit email templates once custom SMTP is configured. Until then the hosted project uses its **default templates**, and the app works with them. `/auth/confirm` accepts both link styles:
 
-Go to **Authentication → Emails → Templates**:
+| Link style | Comes from | How it works | Works in any browser? |
+| --- | --- | --- | --- |
+| `?code=…` | Default templates (`{{ .ConfirmationURL }}`) | The link opens Supabase's `/auth/v1/verify`, which confirms the email (or authorizes the reset) and redirects to `<NEXT_PUBLIC_APP_URL>/auth/confirm?code=…`. The app exchanges the code for a session (PKCE). | **No.** The exchange needs the code-verifier cookie stored in the browser that signed up or requested the reset. |
+| `?token_hash=…&type=…` | Custom templates (`supabase/templates/*.html`) | The app verifies the token on the server (`verifyOtp`). | Yes |
 
-**Confirm signup**
-- Subject: `Confirm your SplitMate account`
-- Body: paste the whole of [`supabase/templates/confirmation.html`](../supabase/templates/confirmation.html).
+With the default templates:
 
-**Reset password**
-- Subject: `Reset your SplitMate password`
-- Body: paste the whole of [`supabase/templates/recovery.html`](../supabase/templates/recovery.html).
+- **Same browser** (link opened where you signed up or requested the reset): sign-up goes to onboarding and a reset goes to **Choose a new password**, already logged in.
+- **Different browser:** the login page says the link was opened in a different browser.
+  - **Sign-up:** the email *is* confirmed by then, so logging in works.
+  - **Password reset:** request a new link and open it in the browser you requested it from.
+- **Expired or used link:** "That link is invalid or has expired." Supabase reports these in the URL fragment (`#error=…`), which the app's server never receives. Such a request carries no code, so the same message appears.
 
-Save each one. Both build links as `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=…`. The app sets `RedirectTo` to `<NEXT_PUBLIC_APP_URL>/auth/confirm`.
+**After custom SMTP is set up**, switch to the custom templates so links work in any browser. Go to **Authentication → Emails → Templates**:
+
+- **Confirm signup:**
+  - Subject: `Confirm your SplitMate account`
+  - Body: paste the whole of [`supabase/templates/confirmation.html`](../supabase/templates/confirmation.html).
+- **Reset password:**
+  - Subject: `Reset your SplitMate password`
+  - Body: paste the whole of [`supabase/templates/recovery.html`](../supabase/templates/recovery.html).
+
+Both build links as `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=…`. The app sets `RedirectTo` to `<NEXT_PUBLIC_APP_URL>/auth/confirm`. No app change is needed when you switch, because both link styles keep working.
+
+Tests:
+- **Local Supabase** uses the custom templates (`supabase/config.toml`); `tests/e2e/auth.spec.ts` covers them.
+- **Default-template links** are covered by `tests/e2e/default-email-links.spec.ts`, which builds the default-style `/auth/v1/verify` link from the same email: same browser, other browser, password reset and a reused link.
+- **Every route branch** is covered by `tests/unit/auth/confirm-route.test.ts`.
 
 ### URL configuration
 
@@ -230,16 +247,16 @@ Do this after section 4's Deployment Protection change. Use the email address of
 | 1 | Open the staging URL on your phone. | SplitMate landing page, with no Vercel login. |
 | 2 | Tap **Get started**. | Sign-up form; fields at least 44 px tall; email keyboard on the email field. |
 | 3 | Enter your Supabase-account email and a new password (8+ characters), then tap **Create account**. | **Check your email** page. |
-| 4 | In the **Gmail app**, open "Confirm your SplitMate account" and tap **Confirm my email**. | Gmail's built-in browser opens **Welcome to SplitMate** (onboarding). The address bar shows the staging URL, not `localhost`. You're now logged in *in that browser*. |
-| 5 | Check the name, pick a currency, tap **Continue**. | Dashboard showing "Hi, &lt;name&gt;" and **No balances yet**. Bottom bar with Dashboard, Groups, ＋, Friends and Activity; only Dashboard is active, the rest are dimmed (they arrive in M4–M6). |
-| 6 | Switch to your phone's main browser, open the staging URL, and log in with the same email and password. | Dashboard, as above. Gmail's built-in browser and your main browser keep separate sessions; that's expected. |
+| 4 | In the **Gmail app**, open the confirmation email (Supabase's default "Confirm Your Signup" until custom templates are set up) and tap the link. | The address bar shows the staging URL, not `localhost`, and one of two things happens, both correct with the default templates (see section 3):<br>• **Same cookies as the browser you signed up in.** On Android, Gmail opens links in Chrome tabs that share Chrome's cookies, so this happens if you signed up in Chrome. You land on **Welcome to SplitMate** (onboarding), logged in.<br>• **Separate browser.** This is the case for Gmail's built-in browser on iOS. The login page says the link was opened in a different browser; your email is confirmed. |
+| 5 | If you saw the different-browser message, log in on that page with the same email and password. Then check the name, pick a currency, and tap **Continue**. | Dashboard showing "Hi, &lt;name&gt;" and **No balances yet**. Bottom bar with Dashboard, Groups, ＋, Friends and Activity; only Dashboard is active, the rest are dimmed (they arrive in M4–M6). |
+| 6 | Switch to your phone's main browser, open the staging URL, and log in if you aren't already. | Dashboard, as above. Gmail's built-in browser and your main browser may keep separate sessions; that's expected. |
 | 7 | Check the edges of the screen. | The header clears the notch or status bar; the bottom bar clears the home indicator; nothing is cut off in portrait. |
 | 8 | Tap ☰ → **Dark**, then ☰ → **System**. | The theme switches immediately, and the choice is kept after a reload. |
 | 9 | Tap ☰ → **Settings**, change your name, and tap **Save changes**. | "Profile saved." The new name shows on the dashboard. |
 | 10 | Tap ☰ → **Log out**. | Login page. |
 | 11 | Open `<staging URL>/dashboard` directly. | Redirected to **Log in**. After logging in, you're back on the dashboard. |
 | 12 | Log in with a wrong password. | "Incorrect email or password." and nothing more. |
-| 13 | *(Optional, uses the 2nd email of the hour.)* Log out, tap **Forgot your password?**, request a link, open it from Gmail, set a new password, then log in with it in the main browser. | "Your password has been updated." on Settings, and the new password works. |
+| 13 | *(Optional, uses the 2nd email of the hour.)* In your main browser, log out, tap **Forgot your password?** and request a link. Open the email and, if Gmail would use a different browser, copy the link (long-press) into that same main browser. Set a new password, then log in with it. | **Choose a new password** opens already logged in; afterwards "Your password has been updated." shows on Settings, and the new password works. If the link opens in a different browser, you get the different-browser message instead; request a new link and open it in the main browser. |
 | 14 | In the Supabase dashboard, open **Authentication → Users** and **Table Editor → profiles**. | The user is confirmed. The profile has your name, currency and time zone, and `onboarded_at` is set. |
 
 Report anything off with a screenshot and the step number.
@@ -254,7 +271,8 @@ Report anything off with a screenshot and the step number.
 | Sign-up says "We can't send email to that address yet" | The address isn't in your Supabase organization (built-in mailer). | Use your Supabase-account email, invite the tester to the org, or set up custom SMTP (**Authentication → Emails → SMTP Settings**). |
 | "Too many emails sent" | The built-in mailer's limit (about 2/hour). | Wait an hour, or set up custom SMTP. It starts at 30/hour, adjustable under **Authentication → Rate Limits**. |
 | Email link points at `localhost`, the Site URL, or the wrong branch | `NEXT_PUBLIC_APP_URL` was added to Preview (it overrides the branch URL), or the URL isn't on the redirect list, so Auth fell back to the Site URL. | Remove `NEXT_PUBLIC_APP_URL` from Preview and redeploy; check the redirect URLs (section 3). |
-| Link opens `/login?error=link` ("invalid or has expired") | The token was already used, it expired (1 hour), a mail scanner opened it first, or the template still uses `{{ .ConfirmationURL }}`. | Re-paste the templates (section 3); use **Resend confirmation email** on the login page. |
+| Link opens `/login?error=link` ("invalid or has expired"), possibly with `#error=access_denied&error_code=otp_expired` after it | The link was already used, it expired (1 hour), or a mail scanner opened it first. | Use **Resend confirmation email** on the login page, or request a new reset link. |
+| Login page says the link was "opened in a different browser" | Default templates (`?code=` links): the PKCE code-verifier cookie lives in the browser that signed up or requested the reset. | Sign-up: the email is confirmed; just log in. Password reset: request a new link and open it in the same browser. Custom templates (section 3, after SMTP) remove this limit. |
 | Files missing from the Vercel build (e.g. "Module not found") | A `.vercelignore` pattern matched more than intended. | Patterns must start with `/`; `npm test` checks this. The build log lists every removed file. |
 | `db push` hangs at "Initialising login role..." (with `--debug`: `failed to connect to host=aws-0-<region>.pooler.supabase.com … Connection timed out`) | The network blocks Postgres traffic on the pooler's port 5432 even though plain TCP connects (seen on 2026-10-21). The CLI's password-free login role always uses 5432, and the direct `db.<ref>.supabase.co` host is IPv6-only. | Switch networks (e.g. a phone hotspot) and retry. A handshake test that can't trigger a login ban: `psql "host=aws-0-<region>.pooler.supabase.com port=5432 user=postgres.aaaaaaaaaaaaaaaaaaaa dbname=postgres sslmode=require"`. It should fail at once with "tenant/user … not found"; a timeout means 5432 is blocked. Port 6543 (transaction mode) may still work with the database password. |
 | Pages are slow | The function region is far from the Supabase region, or the Free project is waking from a pause. | Match the regions (section 4); restore the project in the Supabase dashboard if it's paused. |
@@ -263,7 +281,7 @@ Report anything off with a screenshot and the step number.
 
 When the MVP is ready (after M6, with approval), do these in order:
 
-1. Create a separate Supabase project for production. Push the migrations the same way, set up the same auth settings and templates, and use custom SMTP.
+1. Create a separate Supabase project for production. Push the migrations the same way, set up the same auth settings, and use custom SMTP. Then switch to the custom email templates (section 3), so links work in any browser.
 2. In that project, set **Site URL** to the production URL. List the production URL exactly in **Redirect URLs**, with no wildcard.
 3. In Vercel's **Production** environment, set all three variables: the production Supabase URL and publishable key, and `NEXT_PUBLIC_APP_URL` = the production URL (a custom domain, or the project's production `.vercel.app` domain).
 4. Merge `staging` into `main` and push to deploy.
