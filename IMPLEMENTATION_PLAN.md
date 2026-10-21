@@ -2,6 +2,16 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21 — M1 Money and accounting engine complete
+
+- **Done:** Pure TypeScript engine, no UI or DB. `src/lib/money` (ISO 4217 table, safe-integer guards, float-free `parseMoney`, `formatMoney` with en-IN default). `src/lib/accounting` (largest-remainder `roundShares`, equal/exact/percentage/shares splits, itemized with tax/service/tip/discount rounded once, multi-payer pairwise allocation with whole-matrix rounding, append-only ledger entries with reversals for edit/cancel, settlement entries only when completed, per-user/group/pair balances per currency, idempotency keys). `src/lib/settlements` (greedy `simplifyDebts`, settlement lifecycle state machine). Rules documented in `docs/architecture.md`. 173 unit tests incl. fast-check properties. tsconfig target bumped to ES2022 (BigInt literals).
+- **Next:** M2 — migrations, RLS, RPC functions that *validate* this engine's output (payers/shares sums, pairwise entries reconcile with shares), seed data, pgTAP tests. Ledger entry shape and settlement transitions to mirror are in `docs/architecture.md`.
+- **Decisions to keep in mind for M2:**
+  - Ledger amounts are always positive; a reversal swaps debtor/creditor and has `entry_type = 'reversal'`, linked to the version it reverses. Settlement entries use version 1.
+  - A payer may withdraw (cancel) their own *pending* settlement; the receiver rejects instead. SPEC doesn't say; revisit if you disagree.
+  - Max amount = `Number.MAX_SAFE_INTEGER` minor units; add a matching `CHECK (amount <= 9007199254740991)` in M2.
+- **Known issues:** `npm run db:test` was not re-run at the end of M1 because Docker Desktop was not running (M1 changed no SQL). Earlier M0 notes below still apply.
+
 ### 2026-10-21 — M0 Foundation complete
 
 - **Done:** Next.js 16.4 (App Router, `src/`, TS strict + `noUncheckedIndexedAccess`), Tailwind v4, shadcn/ui (base-nova, `Button`), ESLint (no-explicit-any = error), Vitest + RTL (jsdom), Playwright (desktop + Pixel 7 Chromium), Supabase CLI 2.121 as a dev dependency with `supabase init` and a running local stack, pgTAP smoke test, generated (empty) DB types. `CLAUDE.md`, `.env.example`, `src/lib/env.ts` (Zod, validated from `next.config.ts`), `src/config/brand.ts` + original logo, README.
@@ -25,17 +35,17 @@
 - [x] npm scripts: dev, build, lint, typecheck, test, test:e2e, db:start, db:reset, db:test, db:types
 - [x] Lint, typecheck, unit, e2e, db tests and build pass
 
-### M1 — Money and accounting engine (no UI)
-- [ ] `lib/money`: currency table with ISO 4217 exponents, string → minor-unit parsing, formatting (`en-IN` default), safe-integer guards
-- [ ] `lib/accounting`: equal, exact, percentage (basis points), weighted-share splits
-- [ ] Largest remainder rounding with stable tie-breaks
-- [ ] Itemized bills with tax, service charge, tip, discounts (proportional, equal override)
-- [ ] Multi-payer expenses and pairwise allocation of shares to payers
-- [ ] Per-user, per-pair, per-group balances; currency separation
-- [ ] Settlements (partial/full), amendments and reversals
-- [ ] `lib/settlements`: deterministic greedy debt simplification
-- [ ] All SPEC §7 / §17 unit tests incl. ₹900 and ₹100÷3 cases, multi-payer pairwise test, `fast-check` property tests
-- [ ] Document the itemized rounding rule in `docs/architecture.md`
+### M1 — Money and accounting engine (no UI) ✅
+- [x] `lib/money`: currency table with ISO 4217 exponents, string → minor-unit parsing, formatting (`en-IN` default), safe-integer guards
+- [x] `lib/accounting`: equal, exact, percentage (basis points), weighted-share splits
+- [x] Largest remainder rounding with stable tie-breaks
+- [x] Itemized bills with tax, service charge, tip, discounts (proportional, equal override)
+- [x] Multi-payer expenses and pairwise allocation of shares to payers
+- [x] Per-user, per-pair, per-group balances; currency separation
+- [x] Settlements (partial/full), amendments and reversals; settlement lifecycle state machine
+- [x] `lib/settlements`: deterministic greedy debt simplification
+- [x] All SPEC §7 / §17 unit tests incl. ₹900 and ₹100÷3 cases, multi-payer pairwise test, `fast-check` property tests
+- [x] Document the rounding rules in `docs/architecture.md`
 
 ### M2 — Database schema, RLS, and transactional functions
 - [ ] Migrations for all SPEC §6 tables, constraints, indexes, timestamps
