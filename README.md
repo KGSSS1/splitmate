@@ -44,6 +44,8 @@ Built with Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui and Supabas
    npm run db:reset
    ```
 
+   The seed creates synthetic local users `alice`, `bob`, `carol` and `dave` `@example.test`, all with the local-only password `splitmate-local-dev`. See [docs/database.md](docs/database.md) for the schema, security model and RPC functions.
+
 6. Regenerate database types after any migration:
 
    ```bash

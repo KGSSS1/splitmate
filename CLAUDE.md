@@ -69,6 +69,8 @@ Local Supabase needs Docker. `.env.local` values come from `npx supabase status`
 - `SECURITY DEFINER` only when needed, always with `SET search_path = ''` and explicit auth checks.
 - Never `ON DELETE CASCADE` from profiles into financial tables.
 - `seed.sql` is synthetic local data only.
+- New tables get **no** privileges by default (Supabase's default grants are revoked): add explicit `GRANT`s, RLS and policies, and pgTAP tests for them. Internal functions go in the `private` schema (not exposed by the API); public RPCs need an explicit `GRANT EXECUTE ... TO authenticated`.
+- RPC errors use SQLSTATEs `SM401/403/404/409/422/429`; see `docs/database.md`. Run `npx supabase db lint --local --level warning` after changing functions.
 
 ## Auth and authorization (SPEC §8)
 

@@ -1,0 +1,149 @@
+# Database
+
+SplitMate uses Supabase Postgres. Everything is defined in `supabase/migrations/`. Synthetic local data lives in `supabase/seed.sql`, and the pgTAP tests in `supabase/tests/`. The accounting rules the database enforces are described in [architecture.md](architecture.md).
+
+## Local setup and reset
+
+Docker must be running.
+
+| Task | Command |
+| --- | --- |
+| Start the local stack | `npm run db:start` |
+| Rebuild the database from scratch (all migrations + seed) | `npm run db:reset` |
+| Run the pgTAP tests | `npm run db:test` |
+| Regenerate TypeScript types after a migration | `npm run db:types` → `src/types/database.types.ts` |
+| Lint functions (plpgsql_check) | `npx supabase db lint --local --level warning` |
+| Stop the stack | `npm run db:stop` |
+
+`db:reset` only touches the local database. Never run `supabase db reset --linked` or `supabase db push` without explicit approval (see `CLAUDE.md`).
+
+### Seed users (local only)
+
+`seed.sql` creates four synthetic users. All of them use the password `splitmate-local-dev`.
+
+| Email | Role in seed data |
+| --- | --- |
+| alice@example.test | admin of "Flat 4B"; paid ₹900 for groceries (split equally) |
+| bob@example.test | member; has a pending ₹100 UPI repayment to Alice |
+| carol@example.test | member |
+| dave@example.test | outsider with no groups or friends (useful for denial checks) |
+
+The seed builds its data through the same RPC functions the app uses, so it is always consistent with the rules below. Local auth emails can be read in Mailpit at <http://127.0.0.1:54324>.
+
+## Schema overview
+
+| Area | Tables |
+| --- | --- |
+| Identity and social | `profiles`, `friendships`, `groups`, `group_members`, `group_invitations` |
+| Expenses and accounting | `expenses`, `expense_payers`, `expense_participants`, `expense_items`, `expense_item_assignments`, `settlements`, `ledger_entries` |
+| Other | `recurring_expenses`, `recurring_occurrences`, `attachments`, `comments`, `notifications`, `notification_preferences`, `audit_events` |
+
+`exchange_rates` is added only when currency conversion is implemented (M9).
+
+Conventions:
+- **Keys and timestamps:** UUID primary keys and `created_at`. Mutable tables also have `updated_at`, maintained by a trigger. Insert-only tables (versioned expense rows, `ledger_entries`, `audit_events`) have only `created_at`.
+- **Amounts:** stored with the `minor_amount` domain, a `bigint` in the range 1..9,007,199,254,740,991 (the TypeScript safe-integer limit). Participant shares use `share_amount` (0 allowed). Currencies use `currency_code` (3 upper-case letters).
+- **Status fields** are `text` with `CHECK` constraints, not enums.
+- **Expense versions:** payer, participant and item rows are stored per expense version and never overwritten, so the full history of every edit is kept.
+- **Expense and settlement idempotency:** each has an `idempotency_key`, unique per creator.
+
+### Ledger
+
+`ledger_entries` is the source of truth for balances. Each row says `debtor_id` owes `creditor_id` an `amount` in a `currency`, within a `group_id` (null for direct), linked to exactly one expense (with `source_version`) or settlement.
+- **Append-only:** a trigger rejects every `UPDATE` and `DELETE`, for every role. `audit_events` has the same trigger.
+- **Edit:** reversal rows for the current version, copied from the stored rows, then charges for the new version.
+- **Cancel:** reversal rows only.
+- **Settlements:** a settlement writes a row only when `completed`, with direction receiver → payer. Cancelling a completed settlement writes its reversal.
+
+Balances are computed, never stored:
+- `public.group_balances(group_id)` gives each member's net per currency.
+- `public.friend_balances()` gives the caller's net with each friend, across all groups and direct expenses.
+
+Both run with the caller's rights, so RLS applies.
+
+### Deletion rules
+
+- Every foreign key into financial, membership or history tables is `ON DELETE RESTRICT`. Nothing cascades from a profile or group.
+- `profiles.id` equals `auth.users.id` but has **no foreign key** to it. Account deletion (M9) anonymizes the profile (name "Deleted user", email and avatar removed, `deleted_at` set) and then deletes the auth user. Expenses and ledger rows keep pointing at the profile, so other members' balances stay correct.
+- A member can leave, or be removed by an admin, only when their balance in the group is zero in every currency. The membership row stays (`left_at`, `removed_by`), so history remains readable. If the last admin leaves, the longest-standing remaining member becomes admin.
+
+## Security model
+
+- **RLS everywhere:** RLS is enabled on every public table, and anything not granted is denied. `anon` has no table privileges and cannot execute any SplitMate function.
+- **Policy helpers:** policies call `SECURITY DEFINER` helpers in the `private` schema, such as `is_group_member`, `can_view_expense` and `can_view_settlement`. This avoids recursive policies on `group_members`. The `private` schema is not exposed through the API.
+- **Reads:**
+  - Current group members see the whole group.
+  - Former members see the group plus their own expenses and ledger rows.
+  - Direct expenses and settlements are visible only to the two people involved.
+  - Other people's names and avatars come only from `public.profile_cards(ids)`, limited to people who share a group or friendship with the caller.
+- **Direct writes are limited to specific columns:**
+  - own profile fields
+  - group settings (admins)
+  - own notification preferences
+  - marking notifications read
+  - comments
+  - attachments
+- **Money writes** go only through the RPC functions below. They are `SECURITY DEFINER` with `search_path = ''`, because clients have no write privileges on those tables. Each one checks `auth.uid()` explicitly, locks the rows it changes, validates the invariants, and writes the ledger, audit event and notifications in one transaction.
+- **New tables** get no privileges by default. The default grants for `anon`/`authenticated` are revoked, so every new table needs explicit `GRANT`s and policies.
+- **Invitation tokens** are 256 random bits. They are returned once by `create_invitation`, and only their SHA-256 hash is stored.
+
+### Receipts storage
+
+- **Bucket:** private bucket `receipts`, limited to 5 MB and JPEG/PNG/WebP/PDF.
+- **Paths:** objects live at `{expense_id}/{file}`.
+- **Policies:**
+  - Read: anyone who can see the expense.
+  - Upload: anyone who can edit it (current group members, or the two friends of a direct expense), with `owner_id` equal to the uploader.
+  - Delete: only the uploader.
+- Files are served with short-lived signed URLs (M7).
+
+## RPC functions
+
+All functions require a signed-in user. Payloads use minor units, and the shares and pairwise entries come from `src/lib/accounting`; SQL never re-implements split math.
+
+| Function | Purpose |
+| --- | --- |
+| `create_group(name, default_currency?, description?)` | Creates a group; the caller becomes admin |
+| `create_invitation(group_id, invited_email?, max_uses?, expires_in_hours?)` | Returns `(invitation_id, token)`; any member; limited to 20 per user per hour |
+| `accept_invitation(token? \| invitation_id?, group_id?)` | Joins the group and befriends every member; no-op if already a member |
+| `revoke_invitation(invitation_id)` | The invitation's creator or an admin |
+| `leave_group(group_id)` / `remove_group_member(group_id, user_id)` | Zero balance in every currency required; removal is for admins |
+| `create_expense(idempotency_key, group_id \| null, …, payers, participants, ledger_entries, items?)` | Group expense among current members, or a direct expense between two friends |
+| `update_expense(expense_id, expected_version, …)` | Version check; reverses the current version and writes the next one; returns the new version |
+| `cancel_expense(expense_id, expected_version)` | Reversals only |
+| `create_settlement(idempotency_key, group_id \| null, payer_id, receiver_id, amount, currency, …)` | Completed if the receiver records it, pending if the payer does |
+| `confirm_settlement` / `reject_settlement(settlement_id)` | Receiver only, while pending |
+| `cancel_settlement(settlement_id)` | Payer withdraws a pending settlement; either party cancels a completed one (reversal) |
+| `group_balances(group_id)`, `friend_balances()`, `profile_cards(user_ids)` | Read helpers |
+
+### Error codes
+
+Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` codes come from constraints and should be shown as a generic "invalid input".
+
+| Code | Meaning |
+| --- | --- |
+| `SM401` | not signed in, or account deleted |
+| `SM403` | not allowed (not a member, not a party, not an admin, not friends) |
+| `SM404` | not found, or not visible to the caller |
+| `SM409` | conflict: stale version, already cancelled/confirmed/used/expired/revoked, non-zero balance |
+| `SM422` | invalid input (sums don't match, unknown currency, …) |
+| `SM429` | rate limited |
+
+## Tests
+
+`supabase/tests` runs in file order:
+- `000_helpers` installs the `tests` schema (user creation, `authenticate_as`, payload builders) and commits; it exists only in the local database.
+- Each other file runs in a transaction and rolls back.
+
+| File | Covers |
+| --- | --- |
+| `010_schema` | RLS on every table, privileges, constraints, deletion rules, triggers, append-only tables, the bucket |
+| `020_rls` | Reads and writes for a member, a non-member, a removed member, a direct-expense friend and an anonymous user, table by table |
+| `030_expenses` | Create (including multi-payer and itemized), idempotency, every validation, edit with reversals, stale version, cancel, audit, notifications |
+| `040_settlements` | All status transitions, who may act, never counted twice, reversals, the SPEC §17 numbers |
+| `050_invitations` | Hashed tokens, acceptance and auto-friendship, expired, revoked, reused, wrong-group and wrong-email tokens, rate limit |
+| `060_membership` | Leave and remove rules across currencies, what a removed member can no longer do, admin handover, rejoining |
+| `070_storage` | Receipt upload, read and delete permissions |
+| `080_balances` | Group and friend balances, currency separation, ledger sums to zero |
+
+"Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

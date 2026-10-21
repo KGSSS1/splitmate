@@ -2,6 +2,25 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-21 — M2 Database schema, RLS and transactional functions complete
+
+- **Done:** 10 migrations in `supabase/migrations/`:
+  - 19 tables (all of SPEC §6 except `exchange_rates`), with domains for amounts and currencies, constraints, FK indexes and `updated_at` triggers.
+  - The `auth.users` → `profiles` signup trigger and email sync.
+  - Append-only triggers on `ledger_entries` and `audit_events`.
+  - RLS on every table via `SECURITY DEFINER` helpers in a non-exposed `private` schema; Supabase's default grants revoked; column-level grants for the few direct writes.
+  - 13 RPCs (groups, invitations, membership, expenses, settlements) plus `group_balances`, `friend_balances` and `profile_cards`.
+  - Private `receipts` bucket and its policies.
+
+  Also: `seed.sql` (4 synthetic users, data created through the RPCs), regenerated types, `docs/database.md`, and 240 pgTAP tests in 8 files (243 counting the helper-install and M0 smoke files). `supabase db lint` is clean.
+- **Next:** M3 — auth and app shell: `@supabase/ssr` clients (server/browser/admin), `src/proxy.ts` session refresh, signup/verify/login/reset/logout, onboarding, profile settings, responsive shell and themes. Then the first staging deployment, **with approval**.
+- **Notes for later milestones:**
+  - Map RPC errors by SQLSTATE (`SM401/403/404/409/422/429`); messages are user-safe. Constraint errors (`23xxx`) should become a generic message.
+  - Server Actions must run `src/lib/accounting` and pass the resulting `shares` / `ledger_entries` payloads in snake_case (see the payload comment at the top of `20261021130700_rpc_expenses.sql`).
+  - `recurring_expenses` / `recurring_occurrences` only have tables and read RLS; their RPCs and the `pg_cron` generator come in M7. Friend requests by email are M4.
+  - SPEC §17 also mentions Vitest integration tests against local Supabase; none exist yet. M3 should add a first one once the Supabase clients exist.
+- **Known issues:** none new. The `npm audit` lint-tooling advisories from M0 remain.
+
 ### 2026-10-21 — M1 Money and accounting engine complete
 
 - **Done:** Pure TypeScript engine, no UI or DB. `src/lib/money` (ISO 4217 table, safe-integer guards, float-free `parseMoney`, `formatMoney` with en-IN default). `src/lib/accounting` (largest-remainder `roundShares`, equal/exact/percentage/shares splits, itemized with tax/service/tip/discount rounded once, multi-payer pairwise allocation with whole-matrix rounding, append-only ledger entries with reversals for edit/cancel, settlement entries only when completed, per-user/group/pair balances per currency, idempotency keys). `src/lib/settlements` (greedy `simplifyDebts`, settlement lifecycle state machine). Rules documented in `docs/architecture.md`. 173 unit tests incl. fast-check properties. tsconfig target bumped to ES2022 (BigInt literals).
@@ -48,17 +67,17 @@
 - [x] All SPEC §7 / §17 unit tests incl. ₹900 and ₹100÷3 cases, multi-payer pairwise test, `fast-check` property tests
 - [x] Document the rounding rules in `docs/architecture.md`
 
-### M2 — Database schema, RLS, and transactional functions
-- [ ] Migrations for all SPEC §6 tables, constraints, indexes, timestamps
-- [ ] `auth.users` → `profiles` trigger; public profile view/function
-- [ ] Helper functions (`is_group_member`, etc.) and RLS on every table
-- [ ] Pairwise append-only `ledger_entries`; balance views/functions
-- [ ] RPCs: create/edit/cancel expense, create/confirm/reject/cancel settlement, accept invitation
-- [ ] Invitation tokens (hashed, expiring, revocable, max uses); Postgres-backed rate limits
-- [ ] Private `receipts` bucket + storage policies
-- [ ] `seed.sql` with synthetic users; generated types
-- [ ] pgTAP tests: constraints, RLS (member / non-member / removed / anon), RPCs, stale version, idempotency, token misuse, storage
-- [ ] `docs/database.md`
+### M2 — Database schema, RLS, and transactional functions ✅
+- [x] Migrations for all SPEC §6 tables, constraints, indexes, timestamps (`exchange_rates` deferred to M9)
+- [x] `auth.users` → `profiles` trigger; public profile function (`profile_cards`)
+- [x] Helper functions (`is_group_member`, etc.) and RLS on every table
+- [x] Pairwise append-only `ledger_entries`; balance functions
+- [x] RPCs: create/edit/cancel expense, create/confirm/reject/cancel settlement, create/accept/revoke invitation, create group, leave/remove member
+- [x] Invitation tokens (hashed, expiring, revocable, max uses); Postgres-backed rate limits
+- [x] Private `receipts` bucket + storage policies
+- [x] `seed.sql` with synthetic users; generated types
+- [x] pgTAP tests: constraints, RLS (member / non-member / removed / anon), RPCs, stale version, idempotency, token misuse, storage
+- [x] `docs/database.md`
 
 ### M3 — Auth and app shell
 - [ ] Sign-up, email verification (local Mailpit), login, password reset, logout
