@@ -12,6 +12,8 @@ const MESSAGES: Record<string, string> = {
   over_email_send_rate_limit: "Too many emails sent. Wait a few minutes and try again.",
   signup_disabled: "Sign-ups are currently closed.",
   email_address_invalid: "Enter a valid email address.",
+  // Hosted projects on Supabase's built-in mailer only email organization members.
+  email_address_not_authorized: "We can't send email to that address yet. Try a different one.",
   user_banned: "This account is disabled.",
   session_not_found: "Your session has ended. Log in again.",
   otp_expired: "This link has expired or was already used. Request a new one.",

@@ -1,0 +1,14 @@
+# Files the Vercel CLI must not upload (docs/deployment.md). Vercel builds from
+# package.json, next.config.ts, src/ and public/; everything below is local-only.
+.env*
+!.env.example
+.vercel
+.claude
+.next
+node_modules
+coverage
+test-results
+playwright-report
+blob-report
+supabase
+tests

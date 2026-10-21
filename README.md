@@ -82,6 +82,10 @@ Local services: Studio <http://127.0.0.1:54323>, Mailpit (auth emails) <http://1
 
 `npm run dev`, `npm run build` and `npm run test:e2e` need a valid `.env.local`; a missing or wrong variable stops startup with a list of what to fix.
 
+## Deployment
+
+Staging (hosted Supabase + Vercel preview) and the later production setup are described step by step in [docs/deployment.md](docs/deployment.md).
+
 ## Project layout
 
 ```

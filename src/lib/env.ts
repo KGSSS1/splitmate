@@ -31,9 +31,12 @@ const clientSchema = z.object({
 });
 
 const serverSchema = z.object({
-  SUPABASE_SECRET_KEY: z.string().startsWith("sb_secret_", {
-    error: "must be a secret key (sb_secret_...)",
-  }),
+  // Optional until a server feature needs admin access (account deletion, M9):
+  // a deployment should not hold a key that nothing uses.
+  SUPABASE_SECRET_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().startsWith("sb_secret_", { error: "must be a secret key (sb_secret_...)" }).optional(),
+  ),
   CRON_SECRET: optionalString,
   EMAIL_PROVIDER_API_KEY: optionalString,
   EMAIL_FROM_ADDRESS: z.preprocess(
@@ -90,6 +93,17 @@ export function parseServerEnv(source: EnvSource): ServerEnv {
   const problems = collectProblems(serverSchema, source);
   if (problems.length > 0) throw new EnvError(problems);
   return serverSchema.parse(source);
+}
+
+/**
+ * The app's public URL. An explicit NEXT_PUBLIC_APP_URL always wins. On a
+ * Vercel preview without one, it is the deployment's own URL, so email links
+ * return to the exact preview that sent them (docs/deployment.md).
+ */
+export function resolveAppUrl(source: EnvSource): string | undefined {
+  if (source.NEXT_PUBLIC_APP_URL) return source.NEXT_PUBLIC_APP_URL;
+  if (source.VERCEL_ENV === "preview" && source.VERCEL_URL) return `https://${source.VERCEL_URL}`;
+  return undefined;
 }
 
 /** Validates every variable at once so all problems are reported together. */

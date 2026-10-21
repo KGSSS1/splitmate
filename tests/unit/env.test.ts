@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { EnvError, parseClientEnv, parseServerEnv, validateEnv } from "@/lib/env";
+import { EnvError, parseClientEnv, parseServerEnv, resolveAppUrl, validateEnv } from "@/lib/env";
 
 const validEnv = {
   NEXT_PUBLIC_APP_URL: "http://localhost:3000",
@@ -23,13 +23,29 @@ describe("env validation", () => {
   it("lists every missing variable in one error", () => {
     expect(() => validateEnv({})).toThrow(EnvError);
     expect(() => validateEnv({})).toThrow(/NEXT_PUBLIC_SUPABASE_URL is missing/);
-    expect(() => validateEnv({})).toThrow(/SUPABASE_SECRET_KEY is missing/);
+    expect(() => validateEnv({})).toThrow(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing/);
+  });
+
+  it("does not require the secret key until something uses it", () => {
+    expect(() => validateEnv({ ...validEnv, SUPABASE_SECRET_KEY: "" })).not.toThrow();
+    expect(parseServerEnv({ ...validEnv, SUPABASE_SECRET_KEY: undefined }).SUPABASE_SECRET_KEY).toBeUndefined();
   });
 
   it("rejects a secret key placed in a public variable", () => {
     expect(() =>
       parseClientEnv({ ...validEnv, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_secret_oops" }),
     ).toThrow(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY contains a secret key/);
+  });
+
+  it("uses the Vercel deployment URL on previews without an explicit app URL", () => {
+    const vercel = { VERCEL_ENV: "preview", VERCEL_URL: "splitmate-abc123-team.vercel.app" };
+    expect(resolveAppUrl(vercel)).toBe("https://splitmate-abc123-team.vercel.app");
+    expect(resolveAppUrl({ ...vercel, NEXT_PUBLIC_APP_URL: "https://staging.example.com" })).toBe(
+      "https://staging.example.com",
+    );
+    // Production must always set NEXT_PUBLIC_APP_URL explicitly.
+    expect(resolveAppUrl({ ...vercel, VERCEL_ENV: "production" })).toBeUndefined();
+    expect(resolveAppUrl({})).toBeUndefined();
   });
 
   it("rejects keys of the wrong kind", () => {

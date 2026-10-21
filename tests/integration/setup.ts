@@ -10,3 +10,6 @@ if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(url)) {
       "Start it with `npm run db:start` and copy the values from `npx supabase status` into .env.local.",
   );
 }
+if (!process.env.SUPABASE_SECRET_KEY) {
+  throw new Error("Integration tests need SUPABASE_SECRET_KEY (local SECRET_KEY from `npx supabase status`).");
+}

@@ -7,6 +7,7 @@ describe("authErrorMessage", () => {
     expect(authErrorMessage("invalid_credentials")).toBe("Incorrect email or password.");
     expect(authErrorMessage("email_not_confirmed")).toMatch(/Confirm your email/);
     expect(authErrorMessage("over_email_send_rate_limit")).toMatch(/Too many emails/);
+    expect(authErrorMessage("email_address_not_authorized")).toMatch(/can't send email to that address/);
   });
 
   it("never passes unknown codes or raw messages through", () => {
