@@ -38,7 +38,11 @@
     - Real email delivery for invitations (optional per SPEC §15).
   - **Opening the sign-up confirmation in a different browser** loses the way back to the invitation: the user lands on the dashboard and must reopen the link.
   - **Logging in to an app page while not onboarded** goes to onboarding without the original `next` (pre-existing; invitation links are handled).
-- **Staging:** the new migration is **not** pushed to `splitmate-staging`. That needs your approval (`supabase db push`).
+- **Staging (approved 2026-10-21):**
+  - The M4 migration was pushed to `splitmate-staging` (no seed). The remote history matches local (12 migrations), and lint is clean.
+  - The advisors show 21 rule-0029 WARNs: the earlier 14 plus the 7 new RPCs. All are expected.
+  - The `staging` branch was pushed, and the Vercel preview built (Ready).
+  - Not smoke-tested in a browser: Vercel Authentication is still on.
 - **Next:** M5, expenses.
   - Add an Expenses tab to the group pages (`src/components/groups/group-tabs.tsx`) and enable Add Expense in `nav-config.ts`.
   - Direct expenses need an accepted friendship (`are_friends`).
