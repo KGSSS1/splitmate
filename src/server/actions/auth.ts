@@ -14,6 +14,7 @@ import {
   updatePasswordSchema,
 } from "@/lib/validation/auth";
 import { type ActionResult, invalidInput } from "@/server/action-result";
+import { rememberNextPath } from "@/server/after-auth";
 import { requireUser } from "@/server/auth";
 
 /** Where email links (confirmation, password reset) land: the token-hash route. */
@@ -34,7 +35,12 @@ export async function signUp(input: unknown): Promise<ActionResult> {
   if (error) return { ok: false, error: authErrorMessage(error.code) };
 
   // With email confirmation off (not the default) a session exists right away.
-  if (data.session) redirect(ROUTES.onboarding);
+  if (data.session) {
+    const next = safeNextPath(parsed.data.next);
+    redirect(next === ROUTES.dashboard ? ROUTES.onboarding : `${ROUTES.onboarding}?next=${encodeURIComponent(next)}`);
+  }
+  // Brings the user back to, say, the invitation they signed up from.
+  await rememberNextPath(parsed.data.next);
   // For an email that is already registered Supabase answers the same way and
   // sends nothing, so the response does not reveal which emails have accounts.
   redirect(`${ROUTES.checkEmail}?for=signup`);

@@ -1,4 +1,4 @@
-import { Activity, LayoutDashboard, type LucideIcon, Settings, UserRound, Users } from "lucide-react";
+import { Activity, HandCoins, LayoutDashboard, type LucideIcon, Settings, UserRound, Users } from "lucide-react";
 
 import { ROUTES } from "@/lib/auth/routes";
 
@@ -17,20 +17,21 @@ export interface NavItem {
 /** Bottom navigation on phones, main section of the sidebar on desktop (SPEC §9). */
 export const PRIMARY_NAV: readonly NavItem[] = [
   { href: ROUTES.dashboard, label: "Dashboard", icon: LayoutDashboard, available: true },
-  { href: "/groups", label: "Groups", icon: Users, available: false }, // M4
-  { href: "/friends", label: "Friends", icon: UserRound, available: false }, // M4
-  { href: "/activity", label: "Activity", icon: Activity, available: false }, // M6
+  { href: ROUTES.groups, label: "Groups", icon: Users, available: true },
+  { href: ROUTES.friends, label: "Friends", icon: UserRound, available: true },
+  { href: ROUTES.activity, label: "Activity", icon: Activity, available: true },
 ];
 
 /** Secondary pages: the phone menu and the lower part of the sidebar. */
 export const SECONDARY_NAV: readonly NavItem[] = [
+  { href: ROUTES.settlements, label: "Settlements", icon: HandCoins, available: true },
   { href: ROUTES.settings, label: "Settings", icon: Settings, available: true },
 ];
 
 export const ADD_EXPENSE: Omit<NavItem, "icon"> = {
-  href: "/expenses/new",
+  href: ROUTES.newExpense,
   label: "Add expense",
-  available: false, // M5
+  available: true,
 };
 
 /** True when `pathname` is `href` or a page below it. */

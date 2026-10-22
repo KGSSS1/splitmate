@@ -1,7 +1,7 @@
 -- Settlement RPCs: state transitions, who may do what, idempotency,
 -- "never counted twice", reversals, and the SPEC §17 E2E numbers.
 begin;
-select plan(33);
+select plan(35);
 
 select tests.create_user(name) from unnest(array['alice', 'bob', 'carol', 'dave', 'erin', 'frank']) as name;
 select tests.make_group('Flat', 'alice', array['bob', 'carol']);
@@ -86,6 +86,11 @@ select tests.authenticate_as('alice');
 select lives_ok(format($$ select public.reject_settlement(%L) $$, tests.settlement_id('s4')),
                 'the receiver rejects a pending settlement');
 select is((select status from public.settlements where id = tests.settlement_id('s4')), 'rejected', 'it is rejected');
+-- Review M6 (E1): only completed settlements touch the ledger; a rejection must not.
+select is((select count(*)::int from public.ledger_entries where settlement_id = tests.settlement_id('s4')), 0,
+          'a rejected settlement never touched the ledger');
+select is((select amount from public.group_balances(tests.group_id('Flat')) where user_id = tests.uid('carol')),
+          -30000::bigint, 'a rejected settlement leaves balances as they were');
 select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s4')), 'SM409', null,
                  'a rejected settlement cannot be confirmed later');
 

@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { type ReactNode, Suspense } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,8 +32,28 @@ export function SidebarNav() {
   );
 }
 
+/**
+ * Renders `children` with the current pathname. On routes with dynamic
+ * segments the pathname is only known at request time, so the static shell
+ * shows the links without an active state and the real one streams in.
+ */
+function WithPathname({ children }: { children: (pathname: string | null) => ReactNode }) {
+  return (
+    <Suspense fallback={children(null)}>
+      <PathnameReader>{children}</PathnameReader>
+    </Suspense>
+  );
+}
+
+function PathnameReader({ children }: { children: (pathname: string | null) => ReactNode }) {
+  return children(usePathname());
+}
+
 function SidebarNavLink({ item }: { item: NavItem }) {
-  const pathname = usePathname();
+  return <WithPathname>{(pathname) => <SidebarNavLinkView item={item} pathname={pathname} />}</WithPathname>;
+}
+
+function SidebarNavLinkView({ item, pathname }: { item: NavItem; pathname: string | null }) {
   const Icon = item.icon;
   const base = "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium";
 
@@ -46,7 +67,7 @@ function SidebarNavLink({ item }: { item: NavItem }) {
     );
   }
 
-  const active = isActivePath(pathname, item.href);
+  const active = pathname !== null && isActivePath(pathname, item.href);
   return (
     <Link
       href={item.href}
@@ -86,7 +107,10 @@ export function BottomNav() {
 }
 
 function BottomNavLink({ item }: { item: NavItem }) {
-  const pathname = usePathname();
+  return <WithPathname>{(pathname) => <BottomNavLinkView item={item} pathname={pathname} />}</WithPathname>;
+}
+
+function BottomNavLinkView({ item, pathname }: { item: NavItem; pathname: string | null }) {
   const Icon = item.icon;
   const base = "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[0.7rem] font-medium";
 
@@ -102,7 +126,7 @@ function BottomNavLink({ item }: { item: NavItem }) {
     );
   }
 
-  const active = isActivePath(pathname, item.href);
+  const active = pathname !== null && isActivePath(pathname, item.href);
   return (
     <li className="flex flex-1">
       <Link

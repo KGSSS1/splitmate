@@ -1,4 +1,4 @@
-# Files the Vercel CLI must not upload (docs/deployment.md). Vercel builds from
+# Files Vercel must not deploy (Git integration and CLI; docs/deployment.md). Vercel builds from
 # package.json, next.config.ts, src/ and public/; everything below is local-only.
 # Every pattern starts with "/" so it only matches at the repository root:
 # an unanchored "supabase" also matched src/lib/supabase/ and broke the build.

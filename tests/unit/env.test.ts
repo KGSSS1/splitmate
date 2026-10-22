@@ -53,6 +53,18 @@ describe("env validation", () => {
     expect(resolveAppUrl({})).toBeUndefined();
   });
 
+  it("requires an explicit app URL on Vercel Production, with Vercel-specific advice", () => {
+    const production = { ...validEnv, NEXT_PUBLIC_APP_URL: "", VERCEL: "1", VERCEL_ENV: "production" };
+    expect(resolveAppUrl({ ...production, VERCEL_URL: "splitmate-abc-team.vercel.app" })).toBeUndefined();
+    expect(() => validateEnv(production)).toThrow(/Vercel Production must set it explicitly/);
+    expect(() => validateEnv(production)).toThrow(/Settings → Environment Variables/);
+    expect(() => validateEnv(production)).not.toThrow(/\.env\.local/);
+  });
+
+  it("keeps the local-setup advice outside Vercel", () => {
+    expect(() => validateEnv({ ...validEnv, NEXT_PUBLIC_APP_URL: "" })).toThrow(/Copy \.env\.example to \.env\.local/);
+  });
+
   it("rejects keys of the wrong kind", () => {
     expect(() => parseServerEnv({ ...validEnv, SUPABASE_SECRET_KEY: "eyJlegacy" })).toThrow(
       /SUPABASE_SECRET_KEY must be a secret key/,

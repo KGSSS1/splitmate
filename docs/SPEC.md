@@ -56,7 +56,7 @@ Support both **direct (non-group) friend expenses** and **group expenses**.
 ### Scope decisions for v1
 
 - Only registered users can be expense participants. Inviting someone by email or link creates a pending invitation; they appear in expenses only after accepting. (Placeholder/unregistered members are out of scope for v1; note them as a future enhancement.)
-- A friend balance between two users = the sum of their pairwise balances across all shared groups plus their direct expenses, kept separate per currency. (This requires a pairwise ledger; see Section 6.)
+- A friend balance between two users = the sum, per currency, of what they owe each other in each context: their direct expenses, each shared group that doesn't simplify debts (their raw pairwise balance), and each shared group that simplifies debts (the transfer between the two of them in that group's simplified plan; see Section 7). (This requires a pairwise ledger; see Section 6.)
 - Users find each other by exact email match or invite link only. No browsable user directory.
 - Joining a group automatically makes its members friends with each other (as Splitwise does). Direct friend requests by email are also supported.
 - Any current group member can add, edit, or cancel any expense in that group; every change is recorded in history and notifies the affected participants. For direct expenses, either of the two friends can edit.
@@ -261,7 +261,8 @@ Also test: ₹100 split three ways gives 3334/3333/3333 paise deterministically.
 
 - Use a deterministic greedy algorithm: separate by currency; repeatedly match the largest creditor with the largest debtor (ties broken by user ID) and transfer the smaller of the two amounts.
 - It must preserve every person's net balance exactly and produce at most n−1 transfers for n non-zero members. Finding the absolute minimum number of transfers is NP-hard in general, so describe the output as "simplified", never "optimal".
-- Simplification runs within a group (with a per-group "simplify debts" toggle, on by default). When it is on, that group's suggested transfers are computed from members' net balances, and a settlement between two members who had no direct pairwise debt is valid: it is recorded as a pairwise entry and the group nets stay correct. Show friend balances from raw pairwise entries, and label the group view as "simplified" when the toggle is on. It never mixes currencies.
+- Simplification runs within a group (with a per-group "simplify debts" toggle, on by default). When it is on, that group's suggested transfers are computed from members' net balances, and a settlement between two members who had no direct pairwise debt is valid: it is recorded as a pairwise entry and the group nets stay correct. Label the group view as "simplified" when the toggle is on. It never mixes currencies.
+- Friend-level views follow the plan. For a group with the toggle on, what two members owe each other in friend balances, dashboard totals and "settle up everything" (Section 11) is the transfer between them in that group's simplified plan, not their raw pairwise entries. Otherwise, once everyone follows the plan, the group is settled while leftover pairwise rows (for example a cycle A→B→C→A) would still appear owed elsewhere. Groups with the toggle off, and direct expenses, use raw pairwise entries. Show which amounts come from a simplified plan. The raw pairwise ledger stays the source of truth; the plan is computed from it.
 - Tests: multiple creditors and debtors, partial settlements, ties and equivalent solutions, all-zero balances, unequal balances, a 50-member group, currency separation, and a property-based test that random balances summing to zero are always fully cleared.
 
 ## 8. Authentication and security
@@ -322,7 +323,7 @@ Mobile: bottom navigation (Dashboard, Groups, Friends, Activity) with a prominen
 
 ### Dashboard
 
-Total you owe, total owed to you, and net position (each per currency); outstanding balances by person; group summaries; recent activity; recent settlements; quick actions (add expense, create group, invite friend, settle up). Label clearly so that gross spending, net balances, and repayments are never confused.
+Total you owe, total owed to you, and net position (each per currency); outstanding balances by person (both following each group's simplified plan where the group simplifies debts, Section 7); group summaries; recent activity; recent settlements; quick actions (add expense, create group, invite friend, settle up). Label clearly so that gross spending, net balances, and repayments are never confused.
 
 ## 10. Expense features
 
@@ -336,7 +337,7 @@ Validate every split live in the form and again on the server. Show each partici
 - Optional UPI transaction reference field. **Do not** initiate, receive, or verify UPI payments; there is no payment-provider integration. A `upi://pay` deep link to open the payer's UPI app with the amount prefilled is acceptable if clearly labeled as a convenience, and the settlement is still recorded manually.
 - States: `pending`, `completed`, `cancelled`, `rejected`. Only `completed` affects balances.
 - Suggested payments come from debt simplification.
-- Every settlement belongs to one group or to the direct friend relationship, in one currency. A friend-level "settle up everything" action creates one settlement per group and currency where a balance exists, inside a single transaction, so each group's balances stay correct.
+- Every settlement belongs to one group or to the direct friend relationship, in one currency. A friend-level "settle up everything" action creates one settlement per group and currency where the two owe each other, inside a single transaction, so each group's balances stay correct. For a group that simplifies debts, the amount is the transfer between the two in the group's simplified plan (Section 7); for direct expenses and groups that don't simplify, it is the raw pairwise balance. Groups that either person has left are settled inside the group, not from here. The server computes the amounts; the database checks each one (raw: exactly the pairwise balance; simplified: the right direction and no more than either member's net).
 - Idempotency key prevents duplicate settlements.
 - Balances recompute automatically from the ledger after any change.
 

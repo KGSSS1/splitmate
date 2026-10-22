@@ -16,6 +16,9 @@ describe("getRouteAccess", () => {
     ["/dashboard", "protected"],
     ["/settings", "protected"],
     ["/groups/123", "protected"],
+    ["/friends", "protected"],
+    ["/invite/abc", "public"],
+    ["/invite", "protected"],
     ["/no-such-page", "protected"],
     ["/loginx", "protected"],
   ] as const)("%s is %s", (path, access) => {
@@ -27,6 +30,10 @@ describe("safeNextPath", () => {
   it("keeps same-origin protected paths, including the query", () => {
     expect(safeNextPath("/settings")).toBe("/settings");
     expect(safeNextPath("/groups/abc?tab=balances")).toBe("/groups/abc?tab=balances");
+  });
+
+  it("allows invitation links, which are public, so new members return to them", () => {
+    expect(safeNextPath("/invite/abc_-123?group=0f0e")).toBe("/invite/abc_-123?group=0f0e");
   });
 
   it.each([
@@ -42,7 +49,25 @@ describe("safeNextPath", () => {
     ["/auth/confirm?token_hash=x"],
     ["/"],
     [`/${"a".repeat(2048)}`],
+    // Review M6 (C1): dot segments normalise to "//host", which browsers treat as another origin.
+    ["/.//evil.example"],
+    ["/..//evil.example"],
+    ["/invite/..//..//evil.example"],
+    ["/./%2F/evil.example"],
+    ["/%2e//evil.example"],
+    ["/dashboard/..//evil.example?x=1"],
+    ["/groups//evil.example"],
   ])("falls back to the dashboard for %j", (value) => {
     expect(safeNextPath(value)).toBe(ROUTES.dashboard);
+  });
+
+  it("never returns a value that resolves to another origin", () => {
+    for (const value of ["/settings", "/groups/abc?tab=balances", "/invite/abc_-123?group=0f0e", "/.//evil.example"]) {
+      const next = safeNextPath(value);
+      const resolved = new URL(next, "https://app.example");
+      expect(resolved.origin).toBe("https://app.example");
+      // Next's client router navigates to pathname + search; "//host" there leaves the site.
+      expect(resolved.pathname.startsWith("//")).toBe(false);
+    }
   });
 });

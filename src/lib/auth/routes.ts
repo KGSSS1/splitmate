@@ -10,6 +10,15 @@ export const ROUTES = {
   onboarding: "/onboarding",
   dashboard: "/dashboard",
   settings: "/settings",
+  friends: "/friends",
+  groups: "/groups",
+  newGroup: "/groups/new",
+  invite: "/invite",
+  expenses: "/expenses",
+  newExpense: "/expenses/new",
+  activity: "/activity",
+  settlements: "/settlements",
+  settleUp: "/settle-up",
 } as const;
 
 /**
@@ -27,7 +36,12 @@ const GUEST_PATHS = new Set<string>([
   ROUTES.resetPassword,
 ]);
 
-const PUBLIC_PREFIXES = ["/auth/"];
+// Invitation links are public so signed-out visitors can be asked to sign up or
+// log in first; accepting still needs a session.
+const PUBLIC_PREFIXES = ["/auth/", `${ROUTES.invite}/`];
+
+/** Public pages a visitor may be sent back to after logging in or signing up. */
+const RETURNABLE_PUBLIC_PREFIXES = [`${ROUTES.invite}/`];
 
 export function getRouteAccess(pathname: string): RouteAccess {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
@@ -39,7 +53,13 @@ export function getRouteAccess(pathname: string): RouteAccess {
 /**
  * Returns `value` if it is a same-origin path that is safe to redirect to after
  * login, otherwise the dashboard. Rejects absolute and protocol-relative URLs
- * (`//evil.example`, `/\evil.example`) and auth endpoints.
+ * (`//evil.example`, `/\evil.example`) and auth endpoints. Invitation links are
+ * allowed so a new member lands back on the invitation after signing up.
+ *
+ * Dot segments and empty segments are rejected too: `/.//evil.example`
+ * normalises to the path `//evil.example`, which the client router turns into
+ * a protocol-relative (cross-origin) navigation. Checked after percent-decoding
+ * so `%2e` and `%2f` can't hide them.
  */
 export function safeNextPath(value: string | null | undefined): string {
   if (!value || value.length > 2048) return ROUTES.dashboard;
@@ -49,6 +69,16 @@ export function safeNextPath(value: string | null | undefined): string {
   // Control characters could smuggle a different URL past the checks above.
   if (/[\u0000-\u001f\u007f]/.test(value)) return ROUTES.dashboard;
   const path = value.split(/[?#]/, 1)[0] ?? "";
-  if (getRouteAccess(path) !== "protected") return ROUTES.dashboard;
-  return value;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return ROUTES.dashboard;
+  }
+  if (decoded.includes("//") || decoded.includes("\\") || /(^|\/)\.{1,2}(\/|$)/.test(decoded)) {
+    return ROUTES.dashboard;
+  }
+  if (getRouteAccess(path) === "protected") return value;
+  if (RETURNABLE_PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix))) return value;
+  return ROUTES.dashboard;
 }
