@@ -29,7 +29,12 @@
   - Unit 416 ✓. Integration 20 ✓. pgTAP 416 ✓.
   - Playwright 33/34 in the full run (`--workers=2`). The one failure was the outsider check on `/groups/[id]/settings` timing out with an empty `<main>`: the page hadn't rendered and showed no data. It passed on both viewports when rerun.
 - **Note:** `my_activity`'s efficiency depends on table statistics. `130_review_m6` runs `analyze` after inserting its 1,500 rows, as autovacuum would; without statistics the planner scans every event.
-- **Staging:** the new migration is not pushed yet, and needs approval. The app code calls the new `settle_up_with_friend` signature and the two new read functions, so migration and branch must go together.
+- **Staging (approved 2026-10-22):**
+  - Migration `20261022120000` was pushed after a dry run that showed only that file, with no seed. Remote history matches local (15 migrations).
+  - `db lint --linked` is clean. The advisors show the same 22 expected rule-0029 WARNs; the new read functions are SECURITY INVOKER.
+  - `staging` was pushed (`32871bf`). The Vercel preview `splitmate-pean1bi6b` was Ready in 34 s, and the branch URL points to it.
+  - **Smoke test** through the deployment URL: the landing page loads, and `/dashboard`, `/friends`, `/settle-up`, `/activity` and `/settlements` redirect to login.
+  - This machine's connection to Vercel drops intermittently, and the branch hostname's edge IPs are unreachable from here. Not checked while logged in.
 
 ### 2026-10-22 — Independent review of M0–M6
 
