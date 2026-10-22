@@ -101,13 +101,18 @@ export async function listMyGroups(): Promise<GroupListItem[]> {
   const counts = new Map<string, number>();
   for (const { group_id } of members) counts.set(group_id, (counts.get(group_id) ?? 0) + 1);
 
-  const balances = await Promise.all(groups.map((group) => getGroupBalances(supabase, group.id)));
+  // The caller's net in every group, in one call (rows for groups they've left are ignored below).
+  const { data: mine, error: balancesError } = await supabase.rpc("my_group_balances");
+  if (balancesError) throw new Error("Could not load your groups.");
+  const balances = balancesByPerson(
+    mine.map((row) => ({ personId: row.group_id, currency: row.currency, amount: row.amount })),
+  );
 
   return groups
-    .map((group, index) => ({
+    .map((group) => ({
       ...group,
       memberCount: counts.get(group.id) ?? 0,
-      myBalances: balances[index]?.get(user.id) ?? [],
+      myBalances: balances.get(group.id) ?? [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

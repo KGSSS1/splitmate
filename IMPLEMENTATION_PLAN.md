@@ -2,6 +2,31 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-22 — Independent review of M0–M6
+
+- **Review:** six fresh reviewers (accounting, database security, application security, spec conformance, test quality, code quality) worked from the repo and SPEC only. The merged, de-duplicated findings are in `docs/reviews/review-M6.md`: 0 Critical, 6 High, 18 Medium, 41 Low (the rejected-settlement test gap, first rated High, was re-rated Medium on the second pass; it is fixed too).
+- **Fixed (High), each reproduced by a failing test first:**
+  - **H1 open redirect** through a dot-segment `next` (`/.//host`): `safeNextPath` now decodes the path and rejects `.`/`..` segments, `//` and `\`. Unit cases plus an E2E test (the old code sent the browser off-site).
+  - **H2 removed member rejoining** through someone else's older link: `accept_invitation` refuses invitations created before the removal (migration `20261022060000_review_m6_fixes.sql`).
+  - **H4 activity feed cost:**
+    - `my_activity()` collects candidates from the caller's own data, and RLS still decides visibility.
+    - Visibility checks for a 25-row page dropped from ≥1,500 (one per event in the system) to <100.
+    - `(actor_id, created_at)` index.
+  - **H5 N+1:** `listMyGroups` makes one `my_group_balances()` call.
+  - **H6 / H7 test gaps:**
+    - rejected settlements are now checked against the ledger;
+    - RLS tests cover former members' settlements, item lines, item assignments and recurring occurrences;
+    - a generic "outsider sees nothing in any exposed table" check covers future tables. Each was verified against the mutation that used to pass.
+- **Reproduced, needs a decision: H3.** Simplify-on groups vs raw pairwise friend balances. After following the simplified plan, dashboards and friend pages still show a pairwise cycle, and "Settle up everything" unbalances the settled group. This is the SPEC §7 rule itself, so it is left as is. `tests/integration/simplified-friend-balances.test.ts` uses `it.fails` and will flip once it's fixed. The options are in the review.
+- **Kept from the review:** `tests/integration/differential-review.test.ts` (reviewer A). It checks the DB against the TS engine on random sequences, and passed seeds 1–8 (4,800 operations) plus a race test.
+- **Not done:** the Medium and Low findings wait for a decision; each has a recommendation in the review. M1 (leave vs cancel race) and M2 (balance sums beyond 2^53) are the first ones I'd fix.
+- **Checks after the fixes:**
+  - `db reset` from scratch ✓ (14 migrations; generated types unchanged); lint, typecheck and build ✓; `db lint` and advisors ✓.
+  - pgTAP 405 ✓ (+26). Integration 17 ✓, plus 2 expected-fail H3 reproductions.
+  - Playwright 32/32 ✓ with `--workers=2`. A default-worker run had starved the machine: the dev server grew to 2 GB and free RAM fell below 1 GB.
+  - Unit 408/409. The failing test is the pre-existing flaky retry test (review M17): it also failed on the baseline code under load and passes when run alone. Not fixed, because Medium findings wait for a decision.
+- **Staging:** the new migration is **not** on `splitmate-staging`, and needs approval. The `staging` branch push contains app code that calls `my_activity()`, so the activity feed and dashboard need that migration on the hosted DB first (see the review commit notes).
+
 ### 2026-10-22 — M6 Balances, dashboard and settlements complete (staging deploy pending approval)
 
 - **Done:**

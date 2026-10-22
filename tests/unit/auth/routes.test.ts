@@ -49,7 +49,25 @@ describe("safeNextPath", () => {
     ["/auth/confirm?token_hash=x"],
     ["/"],
     [`/${"a".repeat(2048)}`],
+    // Review M6 (C1): dot segments normalise to "//host", which browsers treat as another origin.
+    ["/.//evil.example"],
+    ["/..//evil.example"],
+    ["/invite/..//..//evil.example"],
+    ["/./%2F/evil.example"],
+    ["/%2e//evil.example"],
+    ["/dashboard/..//evil.example?x=1"],
+    ["/groups//evil.example"],
   ])("falls back to the dashboard for %j", (value) => {
     expect(safeNextPath(value)).toBe(ROUTES.dashboard);
+  });
+
+  it("never returns a value that resolves to another origin", () => {
+    for (const value of ["/settings", "/groups/abc?tab=balances", "/invite/abc_-123?group=0f0e", "/.//evil.example"]) {
+      const next = safeNextPath(value);
+      const resolved = new URL(next, "https://app.example");
+      expect(resolved.origin).toBe("https://app.example");
+      // Next's client router navigates to pathname + search; "//host" there leaves the site.
+      expect(resolved.pathname.startsWith("//")).toBe(false);
+    }
   });
 });

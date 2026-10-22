@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  ACTIVITY_ACTIONS,
   type ActivityItem,
   activityPeople,
   type AuditEventRow,
@@ -24,23 +23,16 @@ export interface ActivityPage {
 }
 
 /**
- * Expense and settlement history the viewer can see, newest first. RLS on
- * `audit_events` decides visibility: current members see their groups' events,
- * everyone sees events about their own direct expenses and settlements.
+ * Expense and settlement history the viewer can see, newest first.
+ * `my_activity` starts from the viewer's own groups, settlements and expenses
+ * (so its cost follows their activity, not everyone's) and RLS on
+ * `audit_events` still decides visibility.
  */
 export async function listActivity({ page = 1, limit = ACTIVITY_PAGE_SIZE }: { page?: number; limit?: number } = {}) {
   const user = await requireUser();
   const supabase = await createClient();
-  const from = (page - 1) * limit;
 
-  const { data, error, count } = await supabase
-    .from("audit_events")
-    .select("id, actor_id, action, entity_type, entity_id, group_id, before, after, created_at", { count: "exact" })
-    .in("entity_type", ["expense", "settlement"])
-    .in("action", [...ACTIVITY_ACTIONS])
-    .order("created_at", { ascending: false })
-    .order("id")
-    .range(from, from + limit - 1);
+  const { data, error } = await supabase.rpc("my_activity", { p_limit: limit, p_offset: (page - 1) * limit });
   if (error) throw new Error("Could not load activity.");
   const rows = data as AuditEventRow[];
 
@@ -54,7 +46,7 @@ export async function listActivity({ page = 1, limit = ACTIVITY_PAGE_SIZE }: { p
   if (groups.error) throw new Error("Could not load activity.");
   const groupNames = new Map(groups.data.map((group) => [group.id, group.name]));
 
-  const total = count ?? rows.length;
+  const total = data[0]?.total_count ?? 0;
   return {
     items: rows.flatMap((row) => {
       const item = describeActivity(row, user.id, (id) => nameOf(cards, id));

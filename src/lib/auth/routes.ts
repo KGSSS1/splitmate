@@ -55,6 +55,11 @@ export function getRouteAccess(pathname: string): RouteAccess {
  * login, otherwise the dashboard. Rejects absolute and protocol-relative URLs
  * (`//evil.example`, `/\evil.example`) and auth endpoints. Invitation links are
  * allowed so a new member lands back on the invitation after signing up.
+ *
+ * Dot segments and empty segments are rejected too: `/.//evil.example`
+ * normalises to the path `//evil.example`, which the client router turns into
+ * a protocol-relative (cross-origin) navigation. Checked after percent-decoding
+ * so `%2e` and `%2f` can't hide them.
  */
 export function safeNextPath(value: string | null | undefined): string {
   if (!value || value.length > 2048) return ROUTES.dashboard;
@@ -64,6 +69,15 @@ export function safeNextPath(value: string | null | undefined): string {
   // Control characters could smuggle a different URL past the checks above.
   if (/[\u0000-\u001f\u007f]/.test(value)) return ROUTES.dashboard;
   const path = value.split(/[?#]/, 1)[0] ?? "";
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return ROUTES.dashboard;
+  }
+  if (decoded.includes("//") || decoded.includes("\\") || /(^|\/)\.{1,2}(\/|$)/.test(decoded)) {
+    return ROUTES.dashboard;
+  }
   if (getRouteAccess(path) === "protected") return value;
   if (RETURNABLE_PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix))) return value;
   return ROUTES.dashboard;

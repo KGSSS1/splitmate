@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { field, logIn, logOut, newAccount, signUpAndVerify } from "./support/accounts";
+import { field, logIn, logOut, newAccount, newPersonPage, signUpAndVerify } from "./support/accounts";
 import { getEmailLink } from "./support/mailpit";
 
 // Runs against local Supabase only: emails are read from its Mailpit inbox.
@@ -92,4 +92,25 @@ test("an invalid email link explains itself on the login page", async ({ page })
   await page.goto("/auth/confirm?token_hash=not-a-real-token&type=email");
   await expect(page).toHaveURL(/\/login\?error=link$/);
   await expect(page.getByText("That link is invalid or has expired.")).toBeVisible();
+});
+
+// Review M6 (C1): "/.//host" normalises to "//host", which the client router
+// used to follow to another origin after logging in or onboarding.
+test("a dot-segment `next` can't send a signed-in user to another site", async ({ page, browser }) => {
+  const account = newAccount();
+  await signUpAndVerify(page, account);
+  await field(page, "Your name").fill("Redirect Test");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // Already onboarded: /onboarding forwards to `next` straight away.
+  await page.goto("/onboarding?next=%2F.%2F%2Fevil.example%2Fpwned");
+  await expect(page).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
+
+  // Logging in (in a fresh browser) with the same kind of `next`.
+  const other = await newPersonPage(browser);
+  await other.goto("/login?next=%2F.%2F%2Fevil.example%2Fpwned-login");
+  await logIn(other, account);
+  await expect(other).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
+  await other.context().close();
 });

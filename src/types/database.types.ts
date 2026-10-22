@@ -631,6 +631,11 @@ isOneToOne: false
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
                            },
+"my_activity":
+{ Args: { "p_limit"?: number,"p_offset"?: number }; Returns: {
+              "action": string,"actor_id": string,"after": Json,"before": Json,"created_at": string,"entity_id": string,"entity_type": string,"group_id": string,"id": string,"total_count": number
+            }[]
+                           },
 "my_group_balances":
 { Args: Record<PropertyKey, never>; Returns: {
               "amount": number,"currency": string,"group_id": string
