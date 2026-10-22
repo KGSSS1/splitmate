@@ -108,6 +108,52 @@ Go to **Authentication → Sign In / Providers → Email**:
 
 Click **Save**.
 
+### Custom SMTP (Brevo)
+
+Supabase's built-in mailer only emails members of your Supabase organization, at about 2 emails an hour. Friends need custom SMTP to receive confirmation emails. These steps use Brevo's free plan; any SMTP provider works the same way (Supabase also lists Resend, Postmark, AWS SES, SendGrid and ZeptoMail). Credentials go into the dashboards only: never into the repo, `.env*` files or chat.
+
+**1. Brevo: account and sender**
+
+1. Create a free account at <https://www.brevo.com>. Check the current free daily limit on their pricing page.
+2. Go to **Senders, Domains & Dedicated IPs → Senders → Add a sender**. Use a name like `SplitMate (staging)` and an address you can open. Brevo emails it a code; enter it to verify the sender.
+3. *(Better, if you own a domain)* **Domains → Add a domain**, then add the DKIM/DMARC DNS records it shows. A From address on a free-mail domain such as `gmail.com`, sent through a third party, is more likely to land in spam or be rejected, because Brevo can't sign for that domain.
+
+**2. Brevo: SMTP key**
+
+1. Go to **SMTP & API → SMTP** (account menu, top right).
+2. Note the **SMTP server** (`smtp-relay.brevo.com`), **Port** (`587`) and **Login** (an address Brevo assigns, often ending in `@smtp-brevo.com`; it is not necessarily your account email).
+3. Click **Generate a new SMTP key**, name it `supabase-splitmate-staging`, and copy it. Brevo shows it only once. Use an **SMTP key**, not an API key.
+
+**3. Supabase: enable custom SMTP**
+
+In the `splitmate-staging` project, go to **Authentication → Emails → SMTP Settings** (direct link: `https://supabase.com/dashboard/project/vnjktzhyvfbnyfzppnkw/auth/smtp`) and turn on **Enable custom SMTP**:
+
+| Field | Value |
+| --- | --- |
+| Sender email | The address you verified in Brevo |
+| Sender name | `SplitMate` |
+| Host | `smtp-relay.brevo.com` |
+| Port number | `587` |
+| Username | The Brevo SMTP **Login** |
+| Password | The SMTP key |
+| Minimum interval between emails | Keep the default |
+
+Click **Save**.
+
+**4. Supabase: rate limit**
+
+After saving, Supabase limits auth emails to 30 per hour. **Authentication → Rate Limits** changes it. 30 is plenty for a handful of testers; raise it only if people hit "try again later" while signing up.
+
+**5. Switch to the custom templates** (see the next section). With custom SMTP the templates become editable, and the token-hash links work in any browser, including the Gmail app's.
+
+**6. Test it**
+
+1. Sign up on the staging URL with an address that is **not** in your Supabase organization (a second address of yours).
+2. The email should arrive within a minute, from your sender name, and its link should open the staging URL.
+3. If it doesn't arrive: check spam, then Brevo's **Transactional → Logs** (or **Statistics**), then Supabase's **Logs → Auth** for SMTP errors (wrong login or key, unverified sender).
+
+To undo it, turn **Enable custom SMTP** off; Supabase goes back to the built-in mailer.
+
 ### Email templates (optional until custom SMTP)
 
 Supabase only lets you edit email templates once custom SMTP is configured. Until then the hosted project uses its **default templates**, and the app works with them. `/auth/confirm` accepts both link styles:
