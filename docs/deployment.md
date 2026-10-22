@@ -67,7 +67,7 @@ Run these from the repo folder. The Supabase CLI is a dev dependency (`npx supab
    npx supabase link --project-ref <project-ref>
    ```
 
-3. Preview the push. This changes nothing; on a fresh project it lists all 11 migrations:
+3. Preview the push. This changes nothing; on a fresh project it lists every migration:
 
    ```bash
    npx supabase db push --linked --dry-run
@@ -81,9 +81,9 @@ Run these from the repo folder. The Supabase CLI is a dev dependency (`npx supab
 
 Then check in the dashboard:
 
-- **Database → Migrations** lists the same 11 versions.
+- **Database → Migrations** lists the same versions as `supabase/migrations/`.
 - **Advisors** — `npx supabase db advisors --linked --type all --level warn`, or **Advisors → Security / Performance Advisor** in the dashboard — show no errors. The expected warnings are:
-  - **21 × WARN `authenticated_security_definer_function_executable`** (rule 0029) since M4: one per public RPC, plus `profile_cards`. This is intended: the RPCs are SECURITY DEFINER on purpose and check `auth.uid()` themselves (see `docs/database.md`). A new function in this list needs a review. The local CLI's advisor doesn't flag these, so the hosted run is the one to check.
+  - **22 × WARN `authenticated_security_definer_function_executable`** (rule 0029) since M6: one per public RPC, plus `profile_cards`. This is intended: the RPCs are SECURITY DEFINER on purpose and check `auth.uid()` themselves (see `docs/database.md`). A new function in this list needs a review. The local CLI's advisor doesn't flag these, so the hosted run is the one to check.
   - **INFO `unused_index`**: expected on a database that has served few or no queries. Revisit it once staging has real traffic.
 - `npx supabase db lint --linked --level warning` reports no issues.
 - **Storage** shows the private `receipts` bucket.

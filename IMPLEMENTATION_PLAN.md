@@ -33,7 +33,11 @@
   - No `upi://pay` deep link (we store no UPI IDs).
   - Settlement dates are validated up to tomorrow (time zones), not per profile time zone.
   - Activity shows expenses and settlements only, not membership changes.
-- **Staging:** the M6 migration is **not** pushed yet and `staging` is not pushed. Needs approval (next section of this session).
+- **Staging:**
+  - The M6 migration was pushed to `splitmate-staging` on 2026-10-22 (approved; dry run first: only `20261021131200`, no seed). Remote history matches local (13 migrations), and `db lint --linked` is clean.
+  - Advisors (warn level) show 22 rule-0029 WARNs: the earlier 21 plus `settle_up_with_friend`. All expected. The new read functions are SECURITY INVOKER and not flagged.
+  - The `staging` branch is **not** pushed yet (next step, needs approval).
+  - Before friends can try it: email delivery (custom SMTP, or confirmation off on staging), Vercel Authentication off, Auth URL configuration. All are dashboard settings for you to change.
 - **Next:** staging deploy of the MVP (with approval), then M7 recurring expenses and receipts.
 
 ### 2026-10-21 — M5 Expenses complete
