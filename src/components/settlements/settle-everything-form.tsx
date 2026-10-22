@@ -16,7 +16,7 @@ import { formatMoney } from "@/lib/money/format";
 import { SETTLEMENT_METHOD_OPTIONS } from "@/lib/settlements/options";
 import { settleUpEverythingSchema, type SettleUpEverythingInput } from "@/lib/validation/settlements";
 import { settleUpEverything } from "@/server/actions/settlements";
-import type { ContextBalance } from "@/server/balances";
+import type { NamedContextBalance } from "@/server/balances";
 
 type Values = Omit<SettleUpEverythingInput, "idempotencyKey" | "friendId">;
 
@@ -33,7 +33,7 @@ export function SettleEverythingForm({
   friendId: string;
   friendName: string;
   /** Only groups you are both still in, plus direct balances. */
-  balances: readonly ContextBalance[];
+  balances: readonly NamedContextBalance[];
 }) {
   // A fresh key after each success, so settling up again later is a new batch.
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
@@ -59,7 +59,9 @@ export function SettleEverythingForm({
           <ul className="grid gap-2 text-sm" aria-label="What will be settled">
             {balances.map((balance) => {
               const money = formatMoney(Math.abs(balance.amount), balance.currency);
-              const where = balance.groupName ? `in ${balance.groupName}` : "outside groups";
+              const where = balance.groupName
+                ? `in ${balance.groupName}${balance.simplified ? " (simplified plan)" : ""}`
+                : "outside groups";
               return (
                 <li key={`${balance.groupId ?? "direct"}-${balance.currency}`} className="rounded-lg border px-3 py-2">
                   {balance.amount > 0 ? (

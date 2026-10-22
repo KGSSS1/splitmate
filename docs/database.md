@@ -61,6 +61,8 @@ Balances are computed, never stored:
 - `public.friend_balances()` gives the caller's net with each friend, across all groups and direct expenses.
 - `public.my_group_balances()` gives the caller's net in each group (including groups they have left; callers filter).
 - `public.friend_group_balances(friend_id)` gives the caller's raw pairwise balance with one person, per group (null = direct) and currency.
+- `public.my_pairwise_balances()` gives the caller's raw pairwise balances with everyone, per group and currency, flagged `simplified` when the group simplifies debts.
+- `public.my_simplified_group_balances()` gives every member's net in the caller's current simplify-on groups. It is the input to the simplified plan that friend-level views follow (`docs/architecture.md`).
 - `public.group_pairwise_balances(group_id)` gives who owes whom inside a group, netted per pair and currency. These are the suggested repayments when the group's simplify-debts toggle is off; with it on, the app simplifies `group_balances` with `src/lib/settlements`.
 
 All of them only sum ledger rows and run with the caller's rights, so RLS applies.
@@ -136,8 +138,8 @@ All functions require a signed-in user. Payloads use minor units, and the shares
 | `create_settlement(idempotency_key, group_id \| null, payer_id, receiver_id, amount, currency, …)` | Completed if the receiver records it, pending if the payer does |
 | `confirm_settlement` / `reject_settlement(settlement_id)` | Receiver only, while pending |
 | `cancel_settlement(settlement_id)` | Payer withdraws a pending settlement; either party cancels a completed one (reversal) |
-| `settle_up_with_friend(idempotency_key, friend_id, method?, upi_reference?, note?, settled_on?)` | One settlement per group (and direct) and currency with a pairwise balance, in one transaction. Owed to the caller → completed; owed by the caller → pending. Groups either person has left are skipped. Returns the settlement IDs; the key is stored as `settlements.batch_id`, so a retry returns the same IDs |
-| `group_balances(group_id)`, `friend_balances()`, `my_group_balances()`, `friend_group_balances(friend_id)`, `group_pairwise_balances(group_id)`, `profile_cards(user_ids)` | Read helpers |
+| `settle_up_with_friend(idempotency_key, friend_id, items, method?, upi_reference?, note?, settled_on?)` | `items` are `[{group_id, currency, amount}]`, computed by the server; positive amount = the friend pays the caller. One settlement per item, in one transaction. Checks: raw contexts must match the pairwise balance exactly; simplify-on groups need the right direction and no more than either net (SM409 otherwise); both people must be current members of each group (SM403). Owed to the caller → completed; owed by the caller → pending. The key is stored as `settlements.batch_id`, so a retry (even a concurrent one) returns the same IDs |
+| `group_balances(group_id)`, `friend_balances()`, `my_group_balances()`, `friend_group_balances(friend_id)`, `group_pairwise_balances(group_id)`, `my_pairwise_balances()`, `my_simplified_group_balances()`, `my_activity(limit, offset)`, `profile_cards(user_ids)` | Read helpers |
 
 ### Error codes
 

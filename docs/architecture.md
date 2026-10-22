@@ -111,11 +111,25 @@ Currencies are never mixed, and unknown currency codes are rejected (also in `si
 1. Group by currency. Reject input whose currency doesn't sum to zero.
 2. Repeatedly match the largest creditor with the largest debtor (ties by user ID) and transfer the smaller of the two amounts.
 
-Each step clears at least one person, so it produces at most n − 1 transfers for n non-zero members, and every net balance is preserved exactly. Finding the true minimum number of transfers is NP-hard, so the UI calls the result **"simplified"**, never "optimal". Friend views use raw pairwise entries; only the group view (with "simplify debts" on) shows simplified transfers.
+Each step clears at least one person, so it produces at most n − 1 transfers for n non-zero members, and every net balance is preserved exactly. Finding the true minimum number of transfers is NP-hard, so the UI calls the result **"simplified"**, never "optimal". Friend-level views follow the same plan: see [Friend balances and simplified groups](#friend-balances-and-simplified-groups).
 
 `suggestedTransfers({ simplify, nets, pairwise })` in `src/lib/settlements/suggestions.ts` picks the source for a group's Balances tab: simplified from `group_balances` when the toggle is on, the raw `group_pairwise_balances` rows when it is off. Both are sorted by currency, then largest amount, then user IDs. Only transfers involving the viewer get a "Record payment" / "Record as received" link, because only the payer or the receiver can record a settlement.
 
-A settlement between two members who never owed each other directly (possible with simplification) is still one pairwise ledger row, so group nets stay correct; their friend balance then shows that row, which is expected (SPEC §7).
+A settlement between two members who never owed each other directly (possible with simplification) is still one pairwise ledger row, so group nets stay correct.
+
+### Friend balances and simplified groups
+
+`friendContextBalances` (`src/lib/settlements/friend-view.ts`) gives the viewer's balance with each person per context and currency (SPEC §2, §7, review M6 H3):
+
+| Context | Amount |
+| --- | --- |
+| Direct expenses | Raw pairwise balance (`my_pairwise_balances`) |
+| Group with simplify-debts **off** | Raw pairwise balance |
+| Group with simplify-debts **on** | The transfer between the two in `simplifyDebts(members' nets)` (`my_simplified_group_balances`); raw rows are ignored |
+
+Why: once everyone follows a simplified plan, the group nets are zero but raw pairwise rows can be left over (for example a cycle A→B→C→A). With raw rows, dashboards and friend pages would still show those as owed, and "settle up everything" would unbalance the settled group. Following the plan, the friend view, dashboard totals and the group's own suggestions always agree.
+
+`src/server/balances.ts` (`loadContextBalances`, memoized per request as `getMyContextBalances`) loads both inputs in two calls and feeds the dashboard totals, "Balances by person", the friends list, the friend page breakdown (labelled "simplified") and "settle up everything". Groups the viewer has left drop out: their net there is zero. The raw functions (`friend_balances`, `friend_group_balances`) stay as ledger views for tests and checks.
 
 ## Settlement lifecycle
 
@@ -134,7 +148,17 @@ Rejected and cancelled are final. Completing twice is an invalid transition, so 
 
 `availableSettlementActions(settlement, viewer)` derives the buttons to show from the same table. Former members of a settlement's group get no buttons (the database refuses them too).
 
-**Settle up everything (M6):** `settle_up_with_friend` reads the caller's pairwise balance with one friend per group and currency and records one settlement each, in one transaction, through the same `private.record_settlement` as `create_settlement`. The friend owes → the caller is the receiver → completed. The caller owes → pending until the friend confirms. Groups that either of them has left are skipped. The batch key becomes `batch_id`; each settlement's own key is derived from it, so retries and double submits are no-ops. Pending settlements don't reduce balances, so the friend page warns when some are already waiting.
+**Settle up everything:**
+- The Server Action computes the items from `friendContextBalances`, for direct balances and groups both people are still in, so groups that simplify use the plan. It sends them to `settle_up_with_friend(key, friend_id, items)`.
+- Under the friendship lock, the database checks each item:
+  - direct, or a group that doesn't simplify: exactly the raw pairwise balance;
+  - a group that simplifies: the right direction, and no more than either member's net. This validates the plan without re-implementing it.
+  - Anything stale is refused with SM409, "Balances have changed. Reload and try again".
+- Each item becomes one settlement through `private.record_settlement`:
+  - the friend owes → the caller is the receiver → completed;
+  - the caller owes → pending until the friend confirms.
+- The batch key becomes `batch_id`; each settlement's own key is derived from it, so retries and concurrent double submits return the same IDs.
+- Pending settlements don't reduce balances, so the friend page warns when some are already waiting.
 
 ## Idempotency
 

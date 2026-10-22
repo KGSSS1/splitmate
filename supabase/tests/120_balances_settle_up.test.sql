@@ -1,6 +1,6 @@
 -- M6: balance read functions and friend-level "settle up everything".
 begin;
-select plan(33);
+select plan(44);
 
 select tests.create_user(name) from unnest(array['alice', 'bob', 'carol', 'dave']) as name;
 select tests.make_group('Flat', 'alice', array['bob', 'carol']);
@@ -45,22 +45,65 @@ select is_empty(format('select * from public.friend_group_balances(%L)', tests.u
 select is_empty('select * from public.my_group_balances()', 'an outsider has no group balances');
 
 -- ---------------------------------------------------------------- settle up everything
+-- Items: positive = the friend pays the caller. Flat simplifies debts (the default); its plan
+-- (bob → alice ₹300, carol → alice ₹300, bob → alice $15) equals the raw pairwise rows here.
+create function pg_temp.items(variadic p_rows text[]) returns jsonb
+language plpgsql immutable set search_path = ''
+as $f$
+declare
+  v_result jsonb := '[]'::jsonb;
+begin
+  for i in 1 .. coalesce(array_length(p_rows, 1), 0) by 3 loop
+    v_result := v_result || jsonb_build_array(jsonb_build_object(
+      'group_id', nullif(p_rows[i], ''), 'currency', p_rows[i + 1], 'amount', p_rows[i + 2]::numeric));
+  end loop;
+  return v_result;
+end;
+$f$;
+create temp table flat as select tests.group_id('Flat')::text as id;
+grant select on flat to authenticated;
+
 select tests.authenticate_as('alice');
-select throws_ok(format($$ select public.settle_up_with_friend(null, %L) $$, tests.uid('bob')), 'SM422', null,
+select throws_ok(format($$ select public.settle_up_with_friend(null, %L, '[]') $$, tests.uid('bob')), 'SM422', null,
                  'an idempotency key is required');
-select throws_ok(format($$ select public.settle_up_with_friend(%L, %L) $$, tests.uid('b0'), tests.uid('alice')),
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, '[]') $$, tests.uid('b0'), tests.uid('alice')),
                  'SM422', null, 'you cannot settle up with yourself');
-select throws_ok(format($$ select public.settle_up_with_friend(%L, %L) $$, tests.uid('b0'), tests.uid('dave')),
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('dave'),
+                        pg_temp.items('', 'INR', '100')),
                  'SM403', null, 'you can only settle up with friends');
-select throws_ok(
-  format($$ select public.settle_up_with_friend(%L, %L, 'cheque') $$, tests.uid('b0'), tests.uid('bob')),
-  'SM422', null, 'an unknown payment method is refused');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, '[]') $$, tests.uid('b0'), tests.uid('bob')),
+                 'SM422', 'There is nothing to settle with this friend', 'an empty list is refused');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L, 'cheque') $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items((select id from flat), 'INR', '30000')),
+                 'SM422', null, 'an unknown payment method is refused');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items('', 'INR', '-9999')),
+                 'SM409', 'Balances have changed. Reload and try again',
+                 'a direct amount must equal the raw pairwise balance');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items((select id from flat), 'INR', '30001')),
+                 'SM409', 'Balances have changed. Reload and try again',
+                 'a simplified-group amount cannot exceed the payer''s net');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items((select id from flat), 'INR', '-100')),
+                 'SM409', 'Balances have changed. Reload and try again',
+                 'a simplified-group amount must go from the member who owes to the one who is owed');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items((select id from flat), 'INR', '100', (select id from flat), 'INR', '100')),
+                 'SM422', 'Each group and currency can appear only once', 'duplicate items are refused');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items('', 'INR', '0')),
+                 'SM422', null, 'a zero amount is refused');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
+                        pg_temp.items('', 'INR', '-9999.5')),
+                 'SM422', null, 'a fractional amount is refused');
 select is((select count(*)::int from public.settlements where batch_id = tests.uid('b0')), 0,
           'a refused batch records nothing');
 
 select lives_ok(
-  format($$ select public.settle_up_with_friend(%L, %L, 'upi', 'UPI-42', 'All square') $$,
-         tests.uid('batch1'), tests.uid('bob')),
+  format($$ select public.settle_up_with_friend(%L, %L, %L, 'upi', 'UPI-42', 'All square') $$,
+         tests.uid('batch1'), tests.uid('bob'),
+         pg_temp.items('', 'INR', '-10000', (select id from flat), 'INR', '30000', (select id from flat), 'USD', '1500')),
   'alice settles up everything with bob');
 select results_eq(
   format($$ select group_id, currency::text, payer_id, receiver_id, amount::bigint, status, method, upi_reference, note
@@ -72,15 +115,15 @@ select results_eq(
          tests.uid('alice'), tests.uid('bob'),
          tests.group_id('Flat'), tests.uid('bob'), tests.uid('alice'),
          tests.group_id('Flat'), tests.uid('bob'), tests.uid('alice')),
-  'one settlement per group and currency; owed to alice completes, owed by alice waits for bob');
+  'one settlement per item; owed to alice completes, owed by alice waits for bob');
 select set_eq(
   format('select group_id, currency, amount from public.friend_group_balances(%L)', tests.uid('bob')),
   $$ values (null::uuid, 'INR'::text, -10000::bigint) $$,
   'only the pending direct settlement is left to confirm');
 select is(
-  public.settle_up_with_friend(tests.uid('batch1'), tests.uid('bob')),
+  public.settle_up_with_friend(tests.uid('batch1'), tests.uid('bob'), '[]'),
   (select array_agg(id order by group_id nulls first, currency) from public.settlements where batch_id = tests.uid('batch1')),
-  'a retry with the same key returns the same settlements');
+  'a retry with the same key returns the same settlements, whatever the items');
 select is((select count(*)::int from public.settlements where batch_id = tests.uid('batch1')), 3,
           'a retry records nothing new');
 select is((select count(*)::int from public.ledger_entries l
@@ -99,29 +142,63 @@ select lives_ok(
   'bob confirms the direct settlement');
 select is_empty(format('select * from public.friend_group_balances(%L)', tests.uid('alice')),
                 'alice and bob are settled up everywhere');
-
-select tests.authenticate_as('alice');
-select throws_ok(format($$ select public.settle_up_with_friend(%L, %L) $$, tests.uid('batch2'), tests.uid('bob')),
-                 'SM422', 'There is nothing to settle with this friend', 'with nothing left, a new batch is refused');
 select set_eq(
   format('select user_id, currency, amount from public.group_balances(%L)', tests.group_id('Flat')),
   format($$ values (%L::uuid, 'INR'::text, 30000::bigint), (%L::uuid, 'INR', -30000) $$,
          tests.uid('alice'), tests.uid('carol')),
   'group nets stay correct after the batch (only carol still owes alice)');
 
--- A group one of the two has left is skipped; the direct balance is still settled.
+-- ---------------------------------------------------------------- the simplified plan, where it differs from raw
+-- Trio simplifies: alice pays ₹300 for all three, carol pays ₹600 for bob and carol.
+-- Nets: alice +200, bob −400, carol +200. Raw: bob owes alice ₹100 (and carol ₹300);
+-- the plan has bob pay alice ₹200 and carol ₹200.
+reset role;
+select tests.make_group('Trio', 'alice', array['bob', 'carol']);
+select tests.add_equal_expense('trio-1', tests.group_id('Trio'), 'alice', 30000, array['alice', 'bob', 'carol']);
+select tests.add_equal_expense('trio-2', tests.group_id('Trio'), 'carol', 60000, array['bob', 'carol']);
+create temp table trio as select tests.group_id('Trio')::text as id;
+grant select on trio to authenticated;
+
+select tests.authenticate_as('alice');
+select set_eq(
+  $$ select group_id, user_id, currency, amount from public.my_simplified_group_balances() $$,
+  format($$ values (%L::uuid, %L::uuid, 'INR'::text, 20000::bigint), (%L, %L, 'INR', -40000), (%L, %L, 'INR', 20000),
+                   (%L, %L, 'INR', 30000), (%L, %L, 'INR', -30000) $$,
+         tests.group_id('Trio'), tests.uid('alice'), tests.group_id('Trio'), tests.uid('bob'),
+         tests.group_id('Trio'), tests.uid('carol'),
+         tests.group_id('Flat'), tests.uid('alice'), tests.group_id('Flat'), tests.uid('carol')),
+  'my_simplified_group_balances: every member''s net in the caller''s simplifying groups');
+select is((select simplified from public.my_pairwise_balances()
+            where friend_id = tests.uid('bob') and group_id = tests.group_id('Trio')), true,
+          'my_pairwise_balances flags rows of groups that simplify');
+select lives_ok(
+  format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('trio-batch'), tests.uid('bob'),
+         pg_temp.items((select id from trio), 'INR', '20000')),
+  'the plan''s ₹200 is accepted although the raw pairwise balance is ₹100');
+select set_eq(
+  format('select user_id, currency, amount from public.group_balances(%L)', tests.group_id('Trio')),
+  format($$ values (%L::uuid, 'INR'::text, -20000::bigint), (%L::uuid, 'INR', 20000) $$,
+         tests.uid('bob'), tests.uid('carol')),
+  'alice is settled; bob now owes only carol, as the plan says');
+
+-- A group either person has left can't be settled from here.
 reset role;
 update public.group_members set left_at = now()
  where group_id = tests.group_id('Flat') and user_id = tests.uid('carol');
 select tests.authenticate_as('alice');
-select lives_ok(format($$ select public.settle_up_with_friend(%L, %L) $$, tests.uid('batch3'), tests.uid('carol')),
-                'alice settles up with carol, who has left the group');
+select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('batch3'), tests.uid('carol'),
+                        pg_temp.items((select id from flat), 'INR', '30000')),
+                 'SM403', 'Both of you must be current members of the group',
+                 'a group carol has left is refused');
+select lives_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('batch4'), tests.uid('carol'),
+                       pg_temp.items('', 'INR', '-2000')),
+                'the direct balance with carol is still settled');
 select results_eq(
   format($$ select group_id, payer_id, receiver_id, amount::bigint, status
-              from public.settlements where batch_id = %L $$, tests.uid('batch3')),
+              from public.settlements where batch_id = %L $$, tests.uid('batch4')),
   format($$ values (null::uuid, %L::uuid, %L::uuid, 2000::bigint, 'pending'::text) $$,
          tests.uid('alice'), tests.uid('carol')),
-  'only the direct balance is settled; the group carol left is skipped');
+  'alice pays carol directly, waiting for carol');
 
 -- ---------------------------------------------------------------- create_settlement after the refactor
 select is((select batch_id from public.settlements where id = public.create_settlement(
@@ -138,19 +215,19 @@ select throws_ok(
 
 -- ---------------------------------------------------------------- privileges
 reset role;
-select ok(has_function_privilege('authenticated', 'public.settle_up_with_friend(uuid, uuid, text, text, text, date)', 'execute')
+select ok(has_function_privilege('authenticated', 'public.settle_up_with_friend(uuid, uuid, jsonb, text, text, text, date)', 'execute')
           and has_function_privilege('authenticated', 'public.group_pairwise_balances(uuid)', 'execute')
           and has_function_privilege('authenticated', 'public.friend_group_balances(uuid)', 'execute')
           and has_function_privilege('authenticated', 'public.my_group_balances()', 'execute'),
           'signed-in users can call the new functions');
-select ok(not has_function_privilege('anon', 'public.settle_up_with_friend(uuid, uuid, text, text, text, date)', 'execute')
+select ok(not has_function_privilege('anon', 'public.settle_up_with_friend(uuid, uuid, jsonb, text, text, text, date)', 'execute')
           and not has_function_privilege('anon', 'public.group_pairwise_balances(uuid)', 'execute')
           and not has_function_privilege('anon', 'public.my_group_balances()', 'execute'),
           'anonymous visitors cannot call them');
 select ok(not has_function_privilege('authenticated',
             'private.record_settlement(uuid, uuid, uuid, uuid, uuid, bigint, text, text, text, text, date, uuid)', 'execute'),
           'the internal recorder is not callable by clients');
-select ok(has_function_privilege('service_role', 'public.settle_up_with_friend(uuid, uuid, text, text, text, date)', 'execute'),
+select ok(has_function_privilege('service_role', 'public.settle_up_with_friend(uuid, uuid, jsonb, text, text, text, date)', 'execute'),
           'service_role keeps access');
 
 select * from finish();

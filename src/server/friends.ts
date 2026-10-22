@@ -1,10 +1,10 @@
 import "server-only";
 
-import { balancesByPerson } from "@/lib/accounting/person-balances";
 import type { CounterpartyBalance } from "@/lib/accounting/summary";
 import { type GroupType, toGroupType } from "@/lib/groups/options";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/server/auth";
+import { getBalancesByPerson } from "@/server/balances";
 import { getPersonCards, nameOf } from "@/server/people";
 
 export interface Friend {
@@ -27,13 +27,6 @@ export interface FriendsOverview {
   outgoing: FriendRequest[];
 }
 
-/** The caller's balance with each friend, keyed by friend ID (SPEC §2: across groups and direct expenses). */
-async function getFriendBalances(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data, error } = await supabase.rpc("friend_balances");
-  if (error) throw new Error("Could not load your balances.");
-  return balancesByPerson(data.map((row) => ({ personId: row.friend_id, currency: row.currency, amount: row.amount })));
-}
-
 export async function getFriendsOverview(): Promise<FriendsOverview> {
   const user = await requireUser();
   const supabase = await createClient();
@@ -49,7 +42,7 @@ export async function getFriendsOverview(): Promise<FriendsOverview> {
     row.user_low === user.id ? row.user_high : row.user_low;
   const [cards, balances] = await Promise.all([
     getPersonCards(supabase, rows.map(otherId)),
-    getFriendBalances(supabase),
+    getBalancesByPerson(),
   ]);
 
   const overview: FriendsOverview = { friends: [], incoming: [], outgoing: [] };
@@ -91,7 +84,7 @@ export async function getFriend(friendId: string): Promise<FriendDetail | null> 
   // RLS shows other people's memberships only in groups the caller is currently in.
   const [cards, balances, shared] = await Promise.all([
     getPersonCards(supabase, [friendId]),
-    getFriendBalances(supabase),
+    getBalancesByPerson(),
     supabase
       .from("group_members")
       .select("groups!group_members_group_id_fkey(id, name, group_type)")

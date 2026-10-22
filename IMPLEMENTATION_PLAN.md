@@ -2,6 +2,35 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-22: Friend balances follow simplified plans (review H3, option 1)
+
+- **Decision (product owner):** in groups that simplify debts, friend-level views use the group's simplified plan instead of raw pairwise rows. Direct expenses and non-simplifying groups are unchanged. SPEC §2, §7, §9 and §11 are updated.
+- **Code:**
+  - `src/lib/settlements/friend-view.ts`, pure:
+    - `friendContextBalances` builds raw rows for direct expenses and non-simplifying groups, and `simplifyDebts` transfers for simplifying groups;
+    - `settleableWith`.
+  - `src/server/balances.ts`:
+    - `loadContextBalances(client, viewerId)`, memoized per request as `getMyContextBalances`;
+    - it feeds the dashboard totals, "Balances by person", the friends list, the friend page breakdown (labelled "simplified") and "Settle up everything".
+  - Migration `20261022120000_simplified_friend_view.sql`:
+    - `my_pairwise_balances()` and `my_simplified_group_balances()`;
+    - `settle_up_with_friend` now takes server-computed `items` and validates each one: raw contexts must match exactly; simplified groups need the right direction and no more than either net (SM409 when stale).
+    - It re-checks the batch after the lock (review L1).
+    - The old signature is dropped.
+- **Tests:**
+  - New unit tests for the friend view (including a property test).
+  - pgTAP `120` rewritten: 44 assertions, including a group where the plan differs from raw.
+  - The H3 integration tests are now real tests (4).
+  - Reviewer A's differential test expects the engine's plan for groups; seeds 1–3 and the default pass.
+  - New E2E: "friend balances follow the group's simplified plan".
+- **Checks:**
+  - `db reset` from scratch ✓; types unchanged; `db lint` and advisors ✓.
+  - Lint, typecheck and build ✓.
+  - Unit 416 ✓. Integration 20 ✓. pgTAP 416 ✓.
+  - Playwright 33/34 in the full run (`--workers=2`). The one failure was the outsider check on `/groups/[id]/settings` timing out with an empty `<main>`: the page hadn't rendered and showed no data. It passed on both viewports when rerun.
+- **Note:** `my_activity`'s efficiency depends on table statistics. `130_review_m6` runs `analyze` after inserting its 1,500 rows, as autovacuum would; without statistics the planner scans every event.
+- **Staging:** the new migration is not pushed yet, and needs approval. The app code calls the new `settle_up_with_friend` signature and the two new read functions, so migration and branch must go together.
+
 ### 2026-10-22 — Independent review of M0–M6
 
 - **Review:** six fresh reviewers (accounting, database security, application security, spec conformance, test quality, code quality) worked from the repo and SPEC only. The merged, de-duplicated findings are in `docs/reviews/review-M6.md`: 0 Critical, 6 High, 18 Medium, 41 Low (the rejected-settlement test gap, first rated High, was re-rated Medium on the second pass; it is fixed too).

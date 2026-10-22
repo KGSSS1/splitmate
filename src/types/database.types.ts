@@ -646,6 +646,16 @@ isOneToOne: false
               "expires_at": string,"group_id": string,"group_name": string,"group_type": string,"invitation_id": string,"inviter_name": string
             }[]
                            },
+"my_pairwise_balances":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "amount": number,"currency": string,"friend_id": string,"group_id": string,"simplified": boolean
+            }[]
+                           },
+"my_simplified_group_balances":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "amount": number,"currency": string,"group_id": string,"user_id": string
+            }[]
+                           },
 "profile_cards":
 { Args: { "p_user_ids": (string)[] }; Returns: {
               "avatar_url": string,"display_name": string,"id": string
@@ -669,7 +679,7 @@ isOneToOne: false
 { Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: undefined
                            },
 "settle_up_with_friend":
-{ Args: { "p_friend_id": string,"p_idempotency_key": string,"p_method"?: string,"p_note"?: string,"p_settled_on"?: string,"p_upi_reference"?: string }; Returns: (string)[]
+{ Args: { "p_friend_id": string,"p_idempotency_key": string,"p_items": Json,"p_method"?: string,"p_note"?: string,"p_settled_on"?: string,"p_upi_reference"?: string }; Returns: (string)[]
                            },
 "update_expense":
 { Args: { "p_amount": number,"p_category"?: string,"p_currency": string,"p_description": string,"p_expected_version": number,"p_expense_date": string,"p_expense_id": string,"p_items"?: Json,"p_ledger_entries": Json,"p_notes"?: string,"p_participants": Json,"p_payers": Json,"p_split_method": string,"p_tags"?: (string)[] }; Returns: number

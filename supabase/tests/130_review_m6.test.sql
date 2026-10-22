@@ -58,6 +58,11 @@ insert into public.audit_events (actor_id, action, entity_type, entity_id, group
 select tests.uid('bob'), 'expense.created', 'expense', gen_random_uuid(), tests.group_id('Noise'), '{}'::jsonb
   from generate_series(1, 1500);
 select tests.add_equal_expense('alice-dinner', tests.group_id('Flat'), 'alice', 10000, array['alice', 'bob']);
+-- Up-to-date statistics, as autovacuum keeps them in a real database; without them the
+-- planner assumes the tables are tiny and scans everything.
+reset role;
+analyze public.audit_events, public.group_members, public.settlements, public.expense_participants,
+        public.expense_payers;
 
 -- How many times the RLS visibility helpers run while `p_sql` executes.
 reset role;

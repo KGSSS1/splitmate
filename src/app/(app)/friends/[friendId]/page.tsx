@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ROUTES } from "@/lib/auth/routes";
 import { GROUP_TYPE_LABELS } from "@/lib/groups/options";
 import { formatMoney } from "@/lib/money/format";
+import { settleableWith } from "@/lib/settlements/friend-view";
 import { cn } from "@/lib/utils";
 import { uuidSchema } from "@/lib/validation/groups";
 import { requireOnboardedProfile } from "@/server/auth";
@@ -35,7 +36,7 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
   ]);
   // A group either of you has left is settled inside that group, not from here.
   const shared = new Set(friend.sharedGroups.map((group) => group.id));
-  const settleable = contextBalances.filter((balance) => balance.groupId === null || shared.has(balance.groupId));
+  const settleable = settleableWith(contextBalances, friend.id, shared);
   const pendingCount = settlements.items.filter((item) => item.status === "pending").length;
 
   return (
@@ -77,7 +78,10 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
           <CardTitle>
             <h2>Balance</h2>
           </CardTitle>
-          <CardDescription>Across all your shared groups and direct expenses, per currency.</CardDescription>
+          <CardDescription>
+            Across all your shared groups and direct expenses, per currency. In groups that simplify debts, this
+            follows the group&apos;s simplified plan.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <BalanceText balances={friend.balances} perspective="friend" className="text-base" />
@@ -85,7 +89,8 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
             <ul className="mt-3 grid gap-1 text-sm text-muted-foreground" aria-label="Balance by group">
               {contextBalances.map((balance) => (
                 <li key={`${balance.groupId ?? "direct"}-${balance.currency}`} className="tabular-nums">
-                  {balance.groupName ?? "Outside groups"}:{" "}
+                  {balance.groupName ?? "Outside groups"}
+                  {balance.simplified ? " (simplified)" : ""}:{" "}
                   {balance.amount > 0
                     ? `owes you ${formatMoney(balance.amount, balance.currency)}`
                     : `you owe ${formatMoney(-balance.amount, balance.currency)}`}

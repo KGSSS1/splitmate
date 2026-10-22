@@ -20,6 +20,7 @@ import type { AdjustmentKind, SplitMethod } from "@/lib/expenses/options";
 import { buildExpensePayload } from "@/lib/expenses/payload";
 import type { ResolvedExpense, ResolvedItem } from "@/lib/expenses/resolve";
 import { initialSettlementStatus, type SettlementAction, transitionSettlement } from "@/lib/settlements/lifecycle";
+import { simplifyDebts } from "@/lib/settlements/simplify";
 import type { Database } from "@/types/database.types";
 
 import { adminClient, createTestUser, deleteTestUsers, signedInClient, type TestUser } from "./support/supabase";
@@ -318,6 +319,7 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
   const users: TestUser[] = [];
   const clients = new Map<string, Client>();
   const groups: string[] = [];
+  const groupMembers = new Map<string, string[]>();
   const expenses: ModelExpense[] = [];
   const settlements: ModelSettlement[] = [];
   const ledger: LedgerEntry[] = [];
@@ -484,6 +486,7 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
         if (group.error) throw group.error;
         const groupId = group.data;
         groups.push(groupId);
+        groupMembers.set(groupId, members);
         const invite = await as(owner).rpc("create_invitation", { p_group_id: groupId, p_max_uses: members.length });
         if (invite.error) throw invite.error;
         for (const member of members.slice(1)) {
@@ -666,17 +669,32 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
             trace.push(`${seq}.${op} retry settlement ${target.settlementId} → ${error?.code ?? data}`);
             if (error || data !== target.settlementId) fail(`settlement retry returned ${error?.code ?? data}`);
           } else {
-            // Settle up everything between two members (all groups + direct, per currency).
+            // Settle up everything between two members (all shared groups + direct, per currency).
+            // Direct: the raw pairwise balance. Groups (they simplify by default): the
+            // transfer between the two in the engine's simplified plan (SPEC §7, §11).
             const [caller = "", friend = ""] = rng.shuffle(members);
             const key = rng.uuid();
             const expectedRows: ModelSettlement[] = [];
+            const items: { group_id: string | null; currency: string; amount: number }[] = [];
             for (const g of [null, ...groups]) {
-              const between = pairBalances(
-                ledger.filter((e) => e.groupId === g),
-                caller,
-              ).filter((b) => b.counterpartyId === friend);
-              const ctxPeople = g === null ? [caller, friend] : groupCtx.people;
+              const people = g === null ? [caller, friend] : (groupMembers.get(g) ?? []);
+              if (!people.includes(caller) || !people.includes(friend)) continue;
+              const between =
+                g === null
+                  ? pairBalances(
+                      ledger.filter((e) => e.groupId === null),
+                      caller,
+                    ).filter((b) => b.counterpartyId === friend)
+                  : simplifyDebts(groupBalances(ledger, g)).flatMap((t) =>
+                      t.toUserId === caller && t.fromUserId === friend
+                        ? [{ counterpartyId: friend, currency: t.currency, amount: t.amount }]
+                        : t.fromUserId === caller && t.toUserId === friend
+                          ? [{ counterpartyId: friend, currency: t.currency, amount: -t.amount }]
+                          : [],
+                    );
+              const ctxPeople = people;
               for (const b of between) {
+                items.push({ group_id: g, currency: b.currency, amount: b.amount });
                 const payerId = b.amount > 0 ? friend : caller;
                 const receiverId = b.amount > 0 ? caller : friend;
                 expectedRows.push({
@@ -693,7 +711,11 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
                 });
               }
             }
-            const { data, error } = await as(caller).rpc("settle_up_with_friend", { p_idempotency_key: key, p_friend_id: friend });
+            const { data, error } = await as(caller).rpc("settle_up_with_friend", {
+              p_idempotency_key: key,
+              p_friend_id: friend,
+              p_items: items,
+            });
             trace.push(`${seq}.${op} settle up ${name(caller)} with ${name(friend)} (engine expects ${expectedRows.length}) → ${error?.code ?? data?.length}`);
             if (expectedRows.length === 0) {
               if (error?.code !== "SM422") fail(`settle_up_with_friend with nothing owed returned ${error?.code ?? "success"}`);
@@ -719,7 +741,11 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
               settlements.push(model);
             }
             // A retry with the same key returns the same settlements and changes nothing.
-            const retry = await as(caller).rpc("settle_up_with_friend", { p_idempotency_key: key, p_friend_id: friend });
+            const retry = await as(caller).rpc("settle_up_with_friend", {
+              p_idempotency_key: key,
+              p_friend_id: friend,
+              p_items: [],
+            });
             if ([...(retry.data ?? [])].sort(compare).join() !== [...data].sort(compare).join()) fail("settle-up retry returned different settlements");
           }
 

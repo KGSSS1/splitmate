@@ -1,27 +1,31 @@
 import { randomUUID } from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { blankExpenseValues } from "@/lib/expenses/form-values";
 import { buildExpensePayload } from "@/lib/expenses/payload";
 import { type ExpenseFormValues, resolveExpense } from "@/lib/expenses/resolve";
+import { settleableWith } from "@/lib/settlements/friend-view";
 import { suggestedTransfers } from "@/lib/settlements/suggestions";
+import { loadContextBalances } from "@/server/balances";
 import type { Database } from "@/types/database.types";
 
 import { adminClient, createTestUser, deleteTestUsers, signedInClient, type TestUser } from "./support/supabase";
 
 type Client = SupabaseClient<Database>;
 
-// Review M6 (D-F1), reproduced. SPEC §7 says friend balances come from raw
-// pairwise entries while a simplify-on group's suggestions come from nets. After
-// everyone follows the simplified plan, the group is settled but a pairwise
-// cycle (A→B, B→C, C→A) stays on dashboards and friend pages, and "settle up
-// everything" then moves money nobody owes.
+// src/server/balances.ts is server-only; here it runs with signed-in test clients.
+vi.mock("server-only", () => ({}));
+
+// Review M6 (H3/D-F1). Friend balances used to come from raw pairwise entries
+// while a simplify-on group's suggestions came from nets. After everyone
+// followed the simplified plan, the group was settled but a pairwise cycle
+// (A→B, B→C, C→A) stayed on dashboards and friend pages, and "settle up
+// everything" then moved money nobody owed.
 //
-// These are `it.fails`: they pass while the behaviour is as described and will
-// start failing once it is fixed, at which point they become normal tests. The
-// fix needs a SPEC decision (docs/reviews/review-M6.md).
+// Fixed by basing friend-level views on the group's simplified plan
+// (SPEC §2, §7, §11; src/lib/settlements/friend-view.ts).
 describe("simplified groups vs raw pairwise friend balances", () => {
   const admin = adminClient();
   const users: TestUser[] = [];
@@ -85,47 +89,88 @@ describe("simplified groups vs raw pairwise friend balances", () => {
     await addExpense(asA, a.id, "300", [a.id, b.id, c.id]);
     await addExpense(asC, c.id, "600", [b.id, c.id]);
 
-    // Everyone follows the simplified plan: B pays A ₹200 and C ₹200, recorded by the receivers.
-    const plan = suggestedTransfers({
-      simplify: true,
-      nets: (await nets()).map((row) => ({ userId: row.user_id, currency: row.currency, amount: row.amount })),
-      pairwise: [],
-    });
-    expect(plan).toEqual([
-      { fromUserId: b.id, toUserId: [a.id, c.id].sort()[0], amount: 20000, currency: "INR" },
-      { fromUserId: b.id, toUserId: [a.id, c.id].sort()[1], amount: 20000, currency: "INR" },
-    ]);
-    for (const transfer of plan) {
-      const receiver = transfer.toUserId === a.id ? asA : asC;
-      const { error } = await receiver.rpc("create_settlement", {
-        p_idempotency_key: randomUUID(),
-        p_group_id: groupId,
-        p_payer_id: transfer.fromUserId,
-        p_receiver_id: transfer.toUserId,
-        p_amount: transfer.amount,
-        p_currency: "INR",
-      });
-      if (error) throw error;
-    }
   });
 
   afterAll(async () => {
     await deleteTestUsers(admin, users);
   });
 
-  it("the group is settled once the simplified plan is followed", async () => {
+  /** What a person's friend view offers to settle with someone (both still in the group). */
+  async function settleable(viewer: TestUser, client: Client, friend: TestUser) {
+    return settleableWith(await loadContextBalances(client, viewer.id), friend.id, new Set([groupId])).map((row) => ({
+      group_id: row.groupId,
+      currency: row.currency,
+      amount: row.amount,
+    }));
+  }
+
+  it("before settling, friend balances follow the group's simplified plan, not raw pairwise rows", async () => {
+    // Raw pairwise: B owes A ₹100, C owes A ₹100, B owes C ₹300. Plan: B pays A ₹200 and C ₹200.
+    const plan = suggestedTransfers({
+      simplify: true,
+      nets: (await nets()).map((row) => ({ userId: row.user_id, currency: row.currency, amount: row.amount })),
+      pairwise: [],
+    });
+    expect(plan.map((t) => [t.fromUserId, t.toUserId, t.amount]).sort()).toEqual(
+      [
+        [b.id, a.id, 20000],
+        [b.id, c.id, 20000],
+      ].sort(),
+    );
+    const view = (rows: Awaited<ReturnType<typeof loadContextBalances>>) =>
+      rows.map((row) => [row.counterpartyId, row.groupId, row.amount, row.simplified]);
+    expect(view(await loadContextBalances(asA, a.id))).toEqual([[b.id, groupId, 20000, true]]);
+    expect(view(await loadContextBalances(asC, c.id))).toEqual([[b.id, groupId, 20000, true]]);
+    expect(view(await loadContextBalances(asB, b.id)).sort()).toEqual(
+      [
+        [a.id, groupId, -20000, true],
+        [c.id, groupId, -20000, true],
+      ].sort(),
+    );
+    // A and C have nothing to settle with each other, although raw rows say C owes A ₹100.
+    expect(await settleable(a, asA, c)).toEqual([]);
+  });
+
+  it("settling up everything follows the plan and leaves the group settled", async () => {
+    // A and C each settle up everything with B (receivers record → completed).
+    for (const [viewer, client] of [
+      [a, asA],
+      [c, asC],
+    ] as const) {
+      const items = await settleable(viewer, client, b);
+      expect(items).toEqual([{ group_id: groupId, currency: "INR", amount: 20000 }]);
+      const { error } = await client.rpc("settle_up_with_friend", {
+        p_idempotency_key: randomUUID(),
+        p_friend_id: b.id,
+        p_items: items,
+      });
+      expect(error).toBeNull();
+    }
     expect(await nets()).toEqual([]);
   });
 
-  it.fails("A's friend balances (dashboard, friend pages) show nothing owed either", async () => {
-    const { data } = await asA.rpc("friend_balances");
-    // Today: B +? / C −? cycle remains, e.g. A owes B ₹100 and C owes A ₹100.
-    expect(data).toEqual([]);
+  it("once the plan is followed, nobody's friend view shows anything owed", async () => {
+    for (const [viewer, client] of [
+      [a, asA],
+      [b, asB],
+      [c, asC],
+    ] as const) {
+      expect(await loadContextBalances(client, viewer.id)).toEqual([]);
+    }
+    // The raw ledger view still has the leftover cycle; the app no longer shows it.
+    const { data: raw } = await asA.rpc("friend_balances");
+    expect(raw?.length).toBe(2);
   });
 
-  it.fails("settle up everything doesn't unbalance a settled group", async () => {
-    const { error } = await asA.rpc("settle_up_with_friend", { p_idempotency_key: randomUUID(), p_friend_id: c.id });
-    expect(error).toBeNull();
+  it("settle up everything can't unbalance a settled group", async () => {
+    expect(await settleable(a, asA, c)).toEqual([]);
+    // Even sent by hand, the raw leftover isn't accepted for a simplifying group.
+    const { error } = await asA.rpc("settle_up_with_friend", {
+      p_idempotency_key: randomUUID(),
+      p_friend_id: c.id,
+      p_items: [{ group_id: groupId, currency: "INR", amount: 10000 }],
+    });
+    expect(error?.code).toBe("SM409");
     expect(await nets()).toEqual([]);
   });
 });

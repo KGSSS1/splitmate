@@ -77,7 +77,8 @@ export default async function DashboardPage() {
           </h2>
           <BalanceSummary summaries={summaries} />
           <p className="text-xs text-muted-foreground">
-            Net balances across all groups and friends, per currency. Repayments count once they&apos;re completed.
+            Net balances across all groups and friends, per currency. In groups that simplify debts, they follow the
+            group&apos;s simplified plan. Repayments count once they&apos;re completed.
           </p>
         </section>
       )}

@@ -1,15 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { blankExpenseValues } from "@/lib/expenses/form-values";
 import { buildExpensePayload } from "@/lib/expenses/payload";
 import { type ExpenseFormValues, resolveExpense } from "@/lib/expenses/resolve";
+import { settleableWith } from "@/lib/settlements/friend-view";
 import { suggestedTransfers } from "@/lib/settlements/suggestions";
+import { loadContextBalances } from "@/server/balances";
 import type { Database } from "@/types/database.types";
 
 import { adminClient, anonClient, createTestUser, deleteTestUsers, signedInClient, type TestUser } from "./support/supabase";
+
+// src/server/balances.ts is server-only; here it runs with a signed-in test client.
+vi.mock("server-only", () => ({}));
 
 // SPEC §17 E2E steps 4–6 and 9 at the API level: balances from the ledger,
 // a payer-recorded settlement confirmed by the receiver, simplified
@@ -143,12 +148,30 @@ describe("balances and settlements against local Supabase", () => {
       { group_id: groupId, currency: "INR", amount: 20000 },
     ]);
 
+    // What the friend page offers (the group simplifies: its plan, here the same as raw).
+    const items = settleableWith(await loadContextBalances(asA, a.id), b.id, new Set([groupId])).map((row) => ({
+      group_id: row.groupId,
+      currency: row.currency,
+      amount: row.amount,
+    }));
+    expect(items).toEqual([
+      { group_id: null, currency: "INR", amount: -25000 },
+      { group_id: groupId, currency: "INR", amount: 20000 },
+    ]);
+
     const key = randomUUID();
-    const settled = await asA.rpc("settle_up_with_friend", { p_idempotency_key: key, p_friend_id: b.id, p_method: "cash" });
+    const settled = await asA.rpc("settle_up_with_friend", {
+      p_idempotency_key: key,
+      p_friend_id: b.id,
+      p_items: items,
+      p_method: "cash",
+    });
     expect(settled.error).toBeNull();
     expect(settled.data).toHaveLength(2);
     // A retry returns the same settlements.
-    expect((await asA.rpc("settle_up_with_friend", { p_idempotency_key: key, p_friend_id: b.id })).data).toEqual(settled.data);
+    expect(
+      (await asA.rpc("settle_up_with_friend", { p_idempotency_key: key, p_friend_id: b.id, p_items: [] })).data,
+    ).toEqual(settled.data);
 
     const { data: rows } = await asA.from("settlements").select("group_id, payer_id, status").in("id", settled.data ?? []);
     expect(rows).toEqual(
@@ -184,7 +207,11 @@ describe("balances and settlements against local Supabase", () => {
       p_currency: "INR",
     });
     expect(settle.error?.code).toBe("SM403");
-    const everything = await asD.rpc("settle_up_with_friend", { p_idempotency_key: randomUUID(), p_friend_id: a.id });
+    const everything = await asD.rpc("settle_up_with_friend", {
+      p_idempotency_key: randomUUID(),
+      p_friend_id: a.id,
+      p_items: [{ group_id: groupId, currency: "INR", amount: 100 }],
+    });
     expect(everything.error?.code).toBe("SM403");
 
     const { data: someSettlement } = await asA.from("settlements").select("id").eq("group_id", groupId).limit(1).single();
@@ -192,7 +219,11 @@ describe("balances and settlements against local Supabase", () => {
     expect(cancel.error?.code).toBe("SM404");
 
     // Anonymous callers cannot run the functions at all.
-    const anon = await anonClient().rpc("settle_up_with_friend", { p_idempotency_key: randomUUID(), p_friend_id: a.id });
+    const anon = await anonClient().rpc("settle_up_with_friend", {
+      p_idempotency_key: randomUUID(),
+      p_friend_id: a.id,
+      p_items: [],
+    });
     expect(anon.error).not.toBeNull();
   });
 });

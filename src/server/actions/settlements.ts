@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { formatMoney } from "@/lib/money/format";
 import { parseMoney } from "@/lib/money/parse";
+import { settleableWith } from "@/lib/settlements/friend-view";
 import { createClient } from "@/lib/supabase/server";
 import {
   createSettlementSchema,
@@ -13,6 +14,8 @@ import {
 } from "@/lib/validation/settlements";
 import { type ActionResult, invalidInput, rpcFailure } from "@/server/action-result";
 import { requireOnboardedProfile } from "@/server/auth";
+import { getMyContextBalances } from "@/server/balances";
+import { getFriend } from "@/server/friends";
 
 const SETTLEMENTS = "/settlements";
 
@@ -55,7 +58,9 @@ export async function createSettlement(input: unknown): Promise<ActionResult> {
 
 /**
  * One settlement per group and currency with a friend, in one transaction
- * (SPEC §11). The key comes from the form, so a retry records nothing twice.
+ * (SPEC §11): raw pairwise amounts for direct and non-simplifying groups, the
+ * simplified plan for groups that simplify. The key comes from the form, so a
+ * retry records nothing twice.
  */
 export async function settleUpEverything(input: unknown): Promise<ActionResult> {
   const parsed = settleUpEverythingSchema.safeParse(input);
@@ -63,10 +68,21 @@ export async function settleUpEverything(input: unknown): Promise<ActionResult> 
   const { idempotencyKey, friendId, method, upiReference, note } = parsed.data;
 
   const profile = await requireOnboardedProfile();
+  const friend = await getFriend(friendId);
+  if (!friend) return { ok: false, error: "You can only settle up with friends." };
+  // Amounts are worked out here, never taken from the browser; the database checks each one.
+  const items = settleableWith(
+    await getMyContextBalances(),
+    friendId,
+    new Set(friend.sharedGroups.map((group) => group.id)),
+  ).map((row) => ({ group_id: row.groupId, currency: row.currency, amount: row.amount }));
+  if (items.length === 0) return { ok: false, error: "There is nothing to settle with this friend." };
+
   const supabase = await createClient();
   const { data: ids, error } = await supabase.rpc("settle_up_with_friend", {
     p_idempotency_key: idempotencyKey,
     p_friend_id: friendId,
+    p_items: items,
     p_method: method,
     ...(method === "upi" && upiReference ? { p_upi_reference: upiReference } : {}),
     ...(note ? { p_note: note } : {}),

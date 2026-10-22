@@ -237,10 +237,11 @@ test("settle up everything with a friend; the friend rejects one part; a complet
   await page.getByRole("link", { name: new RegExp(bina) }).click();
   await expect(page.getByRole("heading", { level: 1, name: bina })).toBeVisible(NAVIGATION);
   const byGroup = page.getByRole("list", { name: "Balance by group" });
-  await expect(byGroup).toContainText(`${groupName}: owes you ₹450.00`);
+  // The group simplifies debts (the default), so its line follows the simplified plan.
+  await expect(byGroup).toContainText(`${groupName} (simplified): owes you ₹450.00`);
   await expect(byGroup).toContainText("Outside groups: you owe ₹250.00");
   const plan = page.getByRole("list", { name: "What will be settled" });
-  await expect(plan).toContainText(`${bina} pays you ₹450.00 in ${groupName}`);
+  await expect(plan).toContainText(`${bina} pays you ₹450.00 in ${groupName} (simplified plan)`);
   await expect(plan).toContainText(`You pay ${bina} ₹250.00 outside groups`);
   await page.getByRole("button", { name: "Settle up everything" }).click();
   await expect(page.getByText("Recorded 2 settlements.", { exact: false })).toBeVisible();
@@ -286,4 +287,64 @@ test("settle up everything with a friend; the friend rejects one part; a complet
   await expect(page.getByText("Simplified", { exact: true }).filter({ visible: true })).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Suggested repayments" })).toContainText(`${bina} pays you ₹450.00`);
   await binaPage.context().close();
+});
+
+// Review M6 (H3): in a group that simplifies debts, friend pages and the dashboard
+// follow the group's simplified plan, not raw pairwise debts.
+test("friend balances follow the group's simplified plan", async ({ page, browser }) => {
+  const [asha, bina, chetan] = ["Asha", "Bina", "Chetan"].map(uniqueName) as [string, string, string];
+  await newMember(page, asha);
+  const groupName = uniqueName("Trip");
+  const groupId = await createGroup(page, groupName, "Trip");
+  await openGroupTab(page, "Members");
+  const invitePath = await createInviteLink(page);
+  const binaPage = await joinThroughInvite(browser, invitePath, bina);
+  const chetanPage = await joinThroughInvite(browser, invitePath, chetan);
+
+  // Asha pays ₹300 for all three; Chetan pays ₹600 for Bina and himself.
+  // Raw: Bina owes Asha ₹100 and Chetan ₹300; Chetan owes Asha ₹100.
+  // Nets: Asha +₹200, Bina −₹400, Chetan +₹200 → plan: Bina pays Asha ₹200 and Chetan ₹200.
+  await addExpense(page, groupId, "Snacks", "300");
+  await chetanPage.goto(`/expenses/new?group=${groupId}`);
+  await expect(field(chetanPage, "Split with")).toHaveValue(`group:${groupId}`, NAVIGATION);
+  await field(chetanPage, "Description").fill("Boat");
+  await field(chetanPage, "Amount").fill("600");
+  await chetanPage.getByRole("checkbox", { name: `Include ${asha}` }).uncheck();
+  await chetanPage.getByRole("button", { name: "Save expense" }).click();
+  await expect(chetanPage).toHaveURL(EXPENSE_URL, NAVIGATION);
+
+  // Asha: only Bina owes her, ₹200 (not ₹100), and Chetan doesn't owe her anything.
+  await page.goto("/dashboard");
+  const people = page.getByRole("list", { name: "Balances by person" }).getByRole("listitem");
+  await expect(people.filter({ hasText: bina })).toContainText("owes you ₹200.00");
+  await expect(people.filter({ hasText: chetan })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Net balance" })).toContainText("+₹200.00");
+
+  // Bina's page for Asha shows the plan, labelled.
+  await binaPage.goto("/friends");
+  await binaPage.getByRole("link", { name: new RegExp(asha) }).click();
+  await expect(binaPage.getByRole("heading", { level: 1, name: asha })).toBeVisible(NAVIGATION);
+  await expect(binaPage.getByRole("list", { name: "Balance by group" })).toContainText(
+    `${groupName} (simplified): you owe ₹200.00`,
+  );
+
+  // Asha records Bina's ₹200 (settle up everything) and Chetan records his: the group is settled
+  // and nobody's dashboard shows anything owed.
+  await page.goto("/friends");
+  await page.getByRole("link", { name: new RegExp(bina) }).click();
+  await page.getByRole("button", { name: "Settle up everything" }).click();
+  await expect(page.getByText("Recorded 1 settlement.", { exact: false })).toBeVisible(NAVIGATION);
+  await chetanPage.goto("/friends");
+  await chetanPage.getByRole("link", { name: new RegExp(bina) }).click();
+  await chetanPage.getByRole("button", { name: "Settle up everything" }).click();
+  await expect(chetanPage.getByText("Recorded 1 settlement.", { exact: false })).toBeVisible(NAVIGATION);
+
+  for (const memberPage of [page, binaPage, chetanPage]) {
+    await memberPage.goto("/dashboard");
+    await expect(memberPage.getByRole("heading", { name: "No balances yet" })).toBeVisible();
+  }
+  await page.goto(`/groups/${groupId}/balances`);
+  await expect(page.getByRole("heading", { name: "Everyone is settled up" })).toBeVisible();
+  await binaPage.context().close();
+  await chetanPage.context().close();
 });

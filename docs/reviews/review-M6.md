@@ -26,9 +26,9 @@ Findings are de-duplicated and sorted by severity. IDs in brackets are the revie
 | Severity | Count | Fixed | Needs decision | Open | Not reproduced |
 | --- | --- | --- | --- | --- | --- |
 | Critical | 0 | — | — | — | — |
-| High | 6 | 5 | 1 | — | 0 |
+| High | 6 | 6 | 0 | — | 0 |
 | Medium | 18 | 1 | — | 17 | — |
-| Low | 41 | — | — | 41 | — |
+| Low | 41 | 1 | — | 40 | — |
 
 Reviewer E's first pass ran on an older commit (`main`, before M4) by mistake. The second pass, on `staging` `c244efa`, is the one that counts. It ran 30 mutations; 11 still passed every suite at that commit (see [Reviewer E, second pass](#reviewer-e-second-pass)). In that pass E re-rated E1 (H6 below) as Medium, so it is listed and counted as Medium, though it was already fixed.
 
@@ -59,7 +59,7 @@ Reviewer E's first pass ran on an older commit (`main`, before M4) by mistake. T
   - An invitation created after the removal still works as a deliberate re-invite.
   - A member who left on their own can still rejoin.
 
-### H3 · Simplified groups contradict friend balances, dashboard totals and "Settle up everything" [D-F1] · **Reproduced, needs decision**
+### H3 · Simplified groups contradict friend balances, dashboard totals and "Settle up everything" [D-F1] · **Fixed (option 1, decided 2026-10-22)**
 - **Where:**
   - `friend_balances` and `friend_group_balances`, which take raw pairwise balances.
   - `settle_up_with_friend`.
@@ -70,7 +70,21 @@ Reviewer E's first pass ran on an older commit (`main`, before M4) by mistake. T
   - The dashboard shows "You owe ₹100 / You are owed ₹100", and the friend page offers to settle it.
   - Using "Settle up everything" then makes the settled group unbalanced again, for money nobody owes.
 - **Reproduced by:** `tests/integration/simplified-friend-balances.test.ts`. The two `it.fails` cases pass while the behaviour exists and will flip when it's fixed.
-- **Why not fixed:** this is the SPEC's own rule, and CLAUDE.md says a SPEC decision is changed only after asking. Options:
+- **Decision:** option 1, chosen by the product owner. SPEC §2, §7, §9 and §11 are updated.
+- **Fix** (migration `20261022120000_simplified_friend_view.sql`, `src/lib/settlements/friend-view.ts`, `src/server/balances.ts`):
+  - For groups that simplify, friend balances, dashboard totals, "Balances by person", the friend page breakdown (labelled "simplified") and "Settle up everything" use the transfer between the two people in the group's simplified plan.
+  - Direct expenses and non-simplifying groups keep raw pairwise balances.
+  - The server computes "Settle up everything" amounts. The database checks them:
+    - raw contexts must match exactly;
+    - simplified groups need the right direction and no more than either member's net.
+  - The checks validate the plan without re-implementing it.
+- **Tests:**
+  - `tests/integration/simplified-friend-balances.test.ts` is now four normal tests. Before settling, every view matches the plan; afterwards nobody's view shows anything owed; the raw leftover can't be settled.
+  - Unit `tests/unit/settlements/friend-view.test.ts`, including a property test that the viewer's rows add up to their net.
+  - pgTAP `120_balances_settle_up`: validation cases and a group where the plan differs from raw.
+  - E2E "friend balances follow the group's simplified plan".
+  - Reviewer A's differential test now expects the engine's plan for groups.
+- **Options that were considered:**
   1. **(Recommended)** For simplify-on groups, derive the friend-level view and "Settle up everything" from the group's simplified transfers between the two people, not from raw pairwise rows. Dashboard owe/owed totals for those groups would come from the group nets.
   2. Leave simplify-on groups out of "Settle up everything" and link to each group's own suggestions instead. Friend balances would show the group net between the two with a "settle in the group" note.
   3. When a settlement between two people with no direct debt is recorded under simplification, also write offsetting pairwise rows along the debt chain, so raw pairwise balances stay consistent. This is more complex and changes ledger semantics.
@@ -143,7 +157,7 @@ _Reviewer E rated this High in its first pass and Medium in its second, because 
 
 | ID | Finding | Where | Recommendation |
 | --- | --- | --- | --- |
-| L1 | Two parallel "Settle up everything" calls with the same key: one returns IDs, the others SM422 [A2] | `settle_up_with_friend` | Fix: repeat the batch lookup after the friendship lock |
+| L1 | Two parallel "Settle up everything" calls with the same key: one returns IDs, the others SM422 [A2] | `settle_up_with_friend` | **Addressed by the H3 rewrite:** the batch lookup is repeated after the friendship lock. Not separately tested. |
 | L2 | Repeated "Settle up everything" by the debtor creates duplicate pending settlements; confirming both overpays [A3] | `settle_up_with_friend` | Fix together with H3: subtract or refuse open pending settlements |
 | L3 | Duplicate people in the form payload make the Server Action throw instead of returning a validation error [A5] | `src/lib/validation/expenses.ts`, `resolve.ts` | Fix: unique-userId refine |
 | L4 | TS lifecycle and SQL return different refusal codes (SM409 vs SM403) for three invalid transitions [A6] | `lifecycle.ts` vs `rpc_settlements.sql` | Document; align if lifecycle stays |
