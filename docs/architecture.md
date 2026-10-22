@@ -113,6 +113,10 @@ Currencies are never mixed, and unknown currency codes are rejected (also in `si
 
 Each step clears at least one person, so it produces at most n − 1 transfers for n non-zero members, and every net balance is preserved exactly. Finding the true minimum number of transfers is NP-hard, so the UI calls the result **"simplified"**, never "optimal". Friend views use raw pairwise entries; only the group view (with "simplify debts" on) shows simplified transfers.
 
+`suggestedTransfers({ simplify, nets, pairwise })` in `src/lib/settlements/suggestions.ts` picks the source for a group's Balances tab: simplified from `group_balances` when the toggle is on, the raw `group_pairwise_balances` rows when it is off. Both are sorted by currency, then largest amount, then user IDs. Only transfers involving the viewer get a "Record payment" / "Record as received" link, because only the payer or the receiver can record a settlement.
+
+A settlement between two members who never owed each other directly (possible with simplification) is still one pairwise ledger row, so group nets stay correct; their friend balance then shows that row, which is expected (SPEC §7).
+
 ## Settlement lifecycle
 
 `src/lib/settlements/lifecycle.ts` (SPEC §2, §11):
@@ -127,6 +131,10 @@ Each step clears at least one person, so it produces at most n − 1 transfers f
 | completed | cancel | either | cancelled | reverse |
 
 Rejected and cancelled are final. Completing twice is an invalid transition, so a settlement is never counted twice. The database (M2) enforces the same rules, plus idempotency-key uniqueness.
+
+`availableSettlementActions(settlement, viewer)` derives the buttons to show from the same table. Former members of a settlement's group get no buttons (the database refuses them too).
+
+**Settle up everything (M6):** `settle_up_with_friend` reads the caller's pairwise balance with one friend per group and currency and records one settlement each, in one transaction, through the same `private.record_settlement` as `create_settlement`. The friend owes → the caller is the receiver → completed. The caller owes → pending until the friend confirms. Groups that either of them has left are skipped. The batch key becomes `batch_id`; each settlement's own key is derived from it, so retries and double submits are no-ops. Pending settlements don't reduce balances, so the friend page warns when some are already waiting.
 
 ## Idempotency
 

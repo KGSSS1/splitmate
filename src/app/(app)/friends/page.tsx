@@ -27,7 +27,7 @@ export default async function FriendsPage() {
         </p>
       </header>
 
-      <Card>
+      <Card id="add-friend">
         <CardHeader>
           <CardTitle>
             <h2>Add a friend</h2>

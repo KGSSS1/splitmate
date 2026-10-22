@@ -101,7 +101,8 @@ export type ResolveResult =
       shares: Share[] | null;
     };
 
-const MONEY_ERRORS: Record<ParseMoneyError, string> = {
+/** User-facing messages for amounts that fail to parse. */
+export const MONEY_ERRORS: Record<ParseMoneyError, string> = {
   EMPTY: "Enter an amount.",
   INVALID_FORMAT: "Enter a number, like 1250.50.",
   TOO_MANY_DECIMALS: "Too many decimal places for this currency.",

@@ -59,8 +59,11 @@ Conventions:
 Balances are computed, never stored:
 - `public.group_balances(group_id)` gives each member's net per currency.
 - `public.friend_balances()` gives the caller's net with each friend, across all groups and direct expenses.
+- `public.my_group_balances()` gives the caller's net in each group (including groups they have left; callers filter).
+- `public.friend_group_balances(friend_id)` gives the caller's raw pairwise balance with one person, per group (null = direct) and currency.
+- `public.group_pairwise_balances(group_id)` gives who owes whom inside a group, netted per pair and currency. These are the suggested repayments when the group's simplify-debts toggle is off; with it on, the app simplifies `group_balances` with `src/lib/settlements`.
 
-Both run with the caller's rights, so RLS applies.
+All of them only sum ledger rows and run with the caller's rights, so RLS applies.
 
 ### Deletion rules
 
@@ -133,7 +136,8 @@ All functions require a signed-in user. Payloads use minor units, and the shares
 | `create_settlement(idempotency_key, group_id \| null, payer_id, receiver_id, amount, currency, …)` | Completed if the receiver records it, pending if the payer does |
 | `confirm_settlement` / `reject_settlement(settlement_id)` | Receiver only, while pending |
 | `cancel_settlement(settlement_id)` | Payer withdraws a pending settlement; either party cancels a completed one (reversal) |
-| `group_balances(group_id)`, `friend_balances()`, `profile_cards(user_ids)` | Read helpers |
+| `settle_up_with_friend(idempotency_key, friend_id, method?, upi_reference?, note?, settled_on?)` | One settlement per group (and direct) and currency with a pairwise balance, in one transaction. Owed to the caller → completed; owed by the caller → pending. Groups either person has left are skipped. Returns the settlement IDs; the key is stored as `settlements.batch_id`, so a retry returns the same IDs |
+| `group_balances(group_id)`, `friend_balances()`, `my_group_balances()`, `friend_group_balances(friend_id)`, `group_pairwise_balances(group_id)`, `profile_cards(user_ids)` | Read helpers |
 
 ### Error codes
 
@@ -167,5 +171,6 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `090_security_review` | Regression tests for the findings of the M2 security review (rerouted debts, rejoining after removal, frozen history, and more) |
 | `100_service_role_grants` | Explicit `service_role` grants (hosted projects no longer add them by default) |
 | `110_friends_groups` | Group type and settings, member roles, friend requests (all outcomes, rate limit), invitation preview, invitations addressed to you |
+| `120_balances_settle_up` | The M6 balance read functions (including outsiders seeing nothing), "settle up everything" (statuses, idempotent retry, skipped groups, notifications), settlement input checks, privileges |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

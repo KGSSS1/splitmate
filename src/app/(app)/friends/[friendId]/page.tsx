@@ -1,29 +1,42 @@
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, HandCoins, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ExpenseList } from "@/components/expenses/expense-list";
 import { GroupTypeIcon } from "@/components/groups/group-type-icon";
+import { SettleEverythingForm } from "@/components/settlements/settle-everything-form";
+import { SettlementList } from "@/components/settlements/settlement-list";
 import { BalanceText } from "@/components/shared/balance-text";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROUTES } from "@/lib/auth/routes";
 import { GROUP_TYPE_LABELS } from "@/lib/groups/options";
+import { formatMoney } from "@/lib/money/format";
 import { cn } from "@/lib/utils";
 import { uuidSchema } from "@/lib/validation/groups";
 import { requireOnboardedProfile } from "@/server/auth";
+import { getFriendContextBalances } from "@/server/balances";
 import { listDirectExpenses } from "@/server/expenses";
 import { getFriend } from "@/server/friends";
+import { listSettlements } from "@/server/settlements";
 
 export const metadata: Metadata = { title: "Friend" };
 
 export default async function FriendPage({ params }: PageProps<"/friends/[friendId]">) {
-  const [{ friendId }] = await Promise.all([params, requireOnboardedProfile()]);
+  const [{ friendId }, profile] = await Promise.all([params, requireOnboardedProfile()]);
   if (!uuidSchema.safeParse(friendId).success) notFound();
   const friend = await getFriend(friendId);
   if (!friend) notFound();
-  const direct = await listDirectExpenses(friendId);
+  const [direct, contextBalances, settlements] = await Promise.all([
+    listDirectExpenses(friendId),
+    getFriendContextBalances(friendId),
+    listSettlements({ kind: "friend", friendId }),
+  ]);
+  // A group either of you has left is settled inside that group, not from here.
+  const shared = new Set(friend.sharedGroups.map((group) => group.id));
+  const settleable = contextBalances.filter((balance) => balance.groupId === null || shared.has(balance.groupId));
+  const pendingCount = settlements.items.filter((item) => item.status === "pending").length;
 
   return (
     <div className="grid max-w-3xl gap-6">
@@ -44,10 +57,19 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
             </p>
           ) : null}
         </div>
-        <Link href={`${ROUTES.newExpense}?friend=${friend.id}`} className={cn(buttonVariants(), "h-11 md:h-9")}>
-          <Plus aria-hidden />
-          Add expense
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`${ROUTES.settleUp}?friend=${friend.id}`}
+            className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}
+          >
+            <HandCoins aria-hidden />
+            Settle up
+          </Link>
+          <Link href={`${ROUTES.newExpense}?friend=${friend.id}`} className={cn(buttonVariants(), "h-11 md:h-9")}>
+            <Plus aria-hidden />
+            Add expense
+          </Link>
+        </div>
       </header>
 
       <Card>
@@ -59,8 +81,50 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
         </CardHeader>
         <CardContent>
           <BalanceText balances={friend.balances} perspective="friend" className="text-base" />
+          {contextBalances.length > 0 ? (
+            <ul className="mt-3 grid gap-1 text-sm text-muted-foreground" aria-label="Balance by group">
+              {contextBalances.map((balance) => (
+                <li key={`${balance.groupId ?? "direct"}-${balance.currency}`} className="tabular-nums">
+                  {balance.groupName ?? "Outside groups"}:{" "}
+                  {balance.amount > 0
+                    ? `owes you ${formatMoney(balance.amount, balance.currency)}`
+                    : `you owe ${formatMoney(-balance.amount, balance.currency)}`}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </CardContent>
       </Card>
+
+      <Card id="settle-everything">
+        <CardHeader>
+          <CardTitle>
+            <h2>Settle up everything</h2>
+          </CardTitle>
+          <CardDescription>
+            {settleable.length > 0
+              ? `Records one repayment for each group and currency, all at once.`
+              : `Nothing to settle with ${friend.displayName}.`}
+            {pendingCount > 0
+              ? ` You have ${pendingCount} pending ${pendingCount === 1 ? "settlement" : "settlements"} with ${friend.displayName}; they don't count until confirmed.`
+              : ""}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SettleEverythingForm friendId={friend.id} friendName={friend.displayName} balances={settleable} />
+        </CardContent>
+      </Card>
+
+      <section aria-labelledby="settlements-heading" className="grid gap-3">
+        <h2 id="settlements-heading" className="text-lg font-semibold">
+          Settlements between you two
+        </h2>
+        {settlements.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No repayments recorded yet.</p>
+        ) : (
+          <SettlementList items={settlements.items} viewerId={profile.id} label="Settlements with friend" showActions />
+        )}
+      </section>
 
       <section aria-labelledby="direct-heading" className="grid gap-3">
         <h2 id="direct-heading" className="text-lg font-semibold">

@@ -2,6 +2,40 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-22 — M6 Balances, dashboard and settlements complete (staging deploy pending approval)
+
+- **Done:**
+  - **Migration** `20261021131200_balances_settle_up.sql`:
+    - Read functions over the ledger: `my_group_balances()`, `friend_group_balances(friend_id)` (pairwise per group, null = direct), `group_pairwise_balances(group_id)`. Sums only; RLS applies (SECURITY INVOKER).
+    - `create_settlement`'s body moved to `private.record_settlement` (same signature and grants). It now also returns readable SM422s for long UPI references/notes and future dates.
+    - `settle_up_with_friend(key, friend_id, method, upi_reference, note, settled_on)`: one settlement per group (and direct) and currency in one transaction. Owed to the caller → completed; owed by the caller → pending. Groups either person left are skipped. `settlements.batch_id` makes retries return the same IDs.
+  - **Pages:**
+    - Dashboard: owed / owing / net per currency, "Waiting for you to confirm" with Confirm/Reject, balances by person, group summaries, recent settlements, recent activity, quick actions (add expense, settle up, create group, invite a friend).
+    - Group **Balances** tab (`/groups/[id]/balances`): member nets, suggested repayments labelled "Simplified" when the toggle is on (raw pairwise debts when off), Record payment / Record as received links, and the group's settlements.
+    - **Settle up** (`/settle-up`): pick a group or friend, then person, who paid, amount (prefilled from suggestions or `?person&direction&amount&currency`), currency, method (cash, bank transfer, UPI recorded manually, other), optional UPI reference, date and note. The form says beforehand whether it completes now or waits for the other person.
+    - **Settlements** (`/settlements`, `/settlements/[id]`): waiting for you, waiting for others, paginated history; detail with status explanation, history and actions (confirm, reject, withdraw, cancel with reversal).
+    - **Friend page:** balance by group, "Settle up everything" (shows which parts complete now and which wait), settlements between you two.
+    - **Activity** (`/activity`, nav enabled): expense and settlement history from `audit_events`, worded from the viewer's side with "You owe / You lent".
+    - Settlements added to the secondary nav (phone menu, sidebar).
+- **Tests:**
+  - Unit/component: 400 (+29): suggestions (incl. a property test), available actions, settlement schemas, activity wording, settle-up form (suggestion fill, validation, idempotency key reused on retry).
+  - Integration: 14 (+3, `tests/integration/settlements.test.ts`): E2E steps 4–6 numbers via RPCs, settle up everything, outsider D denied.
+  - pgTAP: 379 (+33, `120_balances_settle_up`).
+  - Playwright: 30 runs pass (15 tests × desktop and Pixel 7, +4 runs).
+    - New `tests/e2e/settlements.spec.ts`: E2E steps 4–9 (dashboards, B's ₹100 confirmed by A, percentage expense, each member's activity and expense history, D denied on 8 pages and through direct table/RPC calls with D's own session), plus settle up everything → reject → cancel a completed one → simplify off.
+  - `supabase db lint` and local advisors are clean.
+- **Decisions to know:**
+  - **Pending settlements don't reduce balances or suggestions.** A payer could record the same debt twice; the friend page warns when some are pending. Revisit if testers trip over it.
+  - **Simplified transfers between people with no direct debt** create a pairwise ledger row, so friend balances (raw pairwise) can show a debt the group view has netted away. This follows SPEC §7.
+  - **E2E timing:** a full run right after `npm run build` failed 12 tests on 5-second navigation timeouts while the dev server recompiled every route; the rerun with a warm cache is the result above. Run E2E before `build`, or expect a cold first run.
+  - `tests/e2e/support/api.ts` signs in through supabase-js with the publishable key (local URL only) for API-level denial checks.
+- **Not done / known limitations:**
+  - No `upi://pay` deep link (we store no UPI IDs).
+  - Settlement dates are validated up to tomorrow (time zones), not per profile time zone.
+  - Activity shows expenses and settlements only, not membership changes.
+- **Staging:** the M6 migration is **not** pushed yet and `staging` is not pushed. Needs approval (next section of this session).
+- **Next:** staging deploy of the MVP (with approval), then M7 recurring expenses and receipts.
+
 ### 2026-10-21 — M5 Expenses complete
 
 - **Done:**
@@ -278,13 +312,14 @@
 - [x] Group expense list with pagination
 - [x] E2E step 3 passes; edit/cancel reflected in balances
 
-### M6 — Balances, dashboard, settlements
-- [ ] Group and friend balances (per currency)
-- [ ] Dashboard: owe / owed / net, by person, groups, recent activity and settlements, quick actions
-- [ ] Simplify-debts toggle and suggested transfers
-- [ ] Settle-up flow with pending/completed/rejected/cancelled states; settle-up-everything
-- [ ] Settlement history
-- [ ] E2E steps 4–9 pass; staging deploy of the MVP — **needs approval**
+### M6 — Balances, dashboard, settlements (staging deploy pending approval)
+- [x] Group and friend balances (per currency)
+- [x] Dashboard: owe / owed / net, by person, groups, recent activity and settlements, quick actions
+- [x] Simplify-debts toggle and suggested transfers
+- [x] Settle-up flow with pending/completed/rejected/cancelled states; settle-up-everything
+- [x] Settlement history
+- [x] E2E steps 4–9 pass
+- [ ] Staging deploy of the MVP — **needs approval**
 
 ### M7 — Recurring expenses and receipts
 - [ ] Recurring templates (frequency, dates, timezone, resolved shares); pause/resume/cancel

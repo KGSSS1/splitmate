@@ -75,7 +75,7 @@ function Stat({
   tone: keyof typeof TONES;
 }) {
   return (
-    <Card size="sm">
+    <Card size="sm" role="group" aria-label={label}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Icon aria-hidden className="size-4" />

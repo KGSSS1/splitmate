@@ -79,3 +79,23 @@ export function transitionSettlement(
       throw invalid();
   }
 }
+
+/**
+ * The actions `actorId` may take on a settlement right now, in display order.
+ * Mirrors `transitionSettlement` (and the database functions); the database
+ * still decides, so this only chooses which buttons to show.
+ */
+export function availableSettlementActions(
+  settlement: SettlementParties & { status: SettlementStatus },
+  actorId: UserId,
+): SettlementAction[] {
+  if (actorId !== settlement.payerId && actorId !== settlement.receiverId) return [];
+  return (["confirm", "reject", "cancel"] as const).filter((action) => {
+    try {
+      transitionSettlement(settlement, action, actorId);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}

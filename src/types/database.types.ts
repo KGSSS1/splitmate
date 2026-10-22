@@ -523,14 +523,14 @@ isOneToOne: false
                   ]
                 },"settlements": {
                   Row: {
-                    "amount": number,"cancelled_at": string | null,"cancelled_by": string | null,"confirmed_at": string | null,"created_at": string,"created_by": string,"currency": string,"group_id": string | null,"id": string,"idempotency_key": string,"method": string,"note": string | null,"payer_id": string,"receiver_id": string,"rejected_at": string | null,"settled_on": string,"status": string,"updated_at": string,"upi_reference": string | null
+                    "amount": number,"batch_id": string | null,"cancelled_at": string | null,"cancelled_by": string | null,"confirmed_at": string | null,"created_at": string,"created_by": string,"currency": string,"group_id": string | null,"id": string,"idempotency_key": string,"method": string,"note": string | null,"payer_id": string,"receiver_id": string,"rejected_at": string | null,"settled_on": string,"status": string,"updated_at": string,"upi_reference": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount": number,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"confirmed_at"?: string | null,"created_at"?: string,"created_by": string,"currency": string,"group_id"?: string | null,"id"?: string,"idempotency_key": string,"method"?: string,"note"?: string | null,"payer_id": string,"receiver_id": string,"rejected_at"?: string | null,"settled_on"?: string,"status": string,"updated_at"?: string,"upi_reference"?: string | null
+                    "amount": number,"batch_id"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"confirmed_at"?: string | null,"created_at"?: string,"created_by": string,"currency": string,"group_id"?: string | null,"id"?: string,"idempotency_key": string,"method"?: string,"note"?: string | null,"payer_id": string,"receiver_id": string,"rejected_at"?: string | null,"settled_on"?: string,"status": string,"updated_at"?: string,"upi_reference"?: string | null
                   }
                   Update: {
-                    "amount"?: number,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"confirmed_at"?: string | null,"created_at"?: string,"created_by"?: string,"currency"?: string,"group_id"?: string | null,"id"?: string,"idempotency_key"?: string,"method"?: string,"note"?: string | null,"payer_id"?: string,"receiver_id"?: string,"rejected_at"?: string | null,"settled_on"?: string,"status"?: string,"updated_at"?: string,"upi_reference"?: string | null
+                    "amount"?: number,"batch_id"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"confirmed_at"?: string | null,"created_at"?: string,"created_by"?: string,"currency"?: string,"group_id"?: string | null,"id"?: string,"idempotency_key"?: string,"method"?: string,"note"?: string | null,"payer_id"?: string,"receiver_id"?: string,"rejected_at"?: string | null,"settled_on"?: string,"status"?: string,"updated_at"?: string,"upi_reference"?: string | null
                   }
                   Relationships: [
                     {
@@ -608,9 +608,19 @@ isOneToOne: false
               "amount": number,"currency": string,"friend_id": string
             }[]
                            },
+"friend_group_balances":
+{ Args: { "p_friend_id": string }; Returns: {
+              "amount": number,"currency": string,"group_id": string
+            }[]
+                           },
 "group_balances":
 { Args: { "p_group_id": string }; Returns: {
               "amount": number,"currency": string,"user_id": string
+            }[]
+                           },
+"group_pairwise_balances":
+{ Args: { "p_group_id": string }; Returns: {
+              "amount": number,"creditor_id": string,"currency": string,"debtor_id": string
             }[]
                            },
 "invitation_preview":
@@ -620,6 +630,11 @@ isOneToOne: false
                            },
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
+                           },
+"my_group_balances":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "amount": number,"currency": string,"group_id": string
+            }[]
                            },
 "my_group_invitations":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -647,6 +662,9 @@ isOneToOne: false
                            },
 "set_member_role":
 { Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: undefined
+                           },
+"settle_up_with_friend":
+{ Args: { "p_friend_id": string,"p_idempotency_key": string,"p_method"?: string,"p_note"?: string,"p_settled_on"?: string,"p_upi_reference"?: string }; Returns: (string)[]
                            },
 "update_expense":
 { Args: { "p_amount": number,"p_category"?: string,"p_currency": string,"p_description": string,"p_expected_version": number,"p_expense_date": string,"p_expense_id": string,"p_items"?: Json,"p_ledger_entries": Json,"p_notes"?: string,"p_participants": Json,"p_payers": Json,"p_split_method": string,"p_tags"?: (string)[] }; Returns: number

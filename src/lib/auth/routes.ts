@@ -16,6 +16,9 @@ export const ROUTES = {
   invite: "/invite",
   expenses: "/expenses",
   newExpense: "/expenses/new",
+  activity: "/activity",
+  settlements: "/settlements",
+  settleUp: "/settle-up",
 } as const;
 
 /**

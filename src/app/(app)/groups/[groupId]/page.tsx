@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus, ReceiptText } from "lucide-react";
+import { Plus, ReceiptText } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,6 +7,7 @@ import { ExpenseList } from "@/components/expenses/expense-list";
 import { FormStatus } from "@/components/forms/form-status";
 import { GroupHeader } from "@/components/groups/group-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Pager } from "@/components/shared/pager";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
 import { cn } from "@/lib/utils";
@@ -63,32 +64,7 @@ export default async function GroupExpensesPage({ params, searchParams }: PagePr
         <ExpenseList items={expenses.items} label="Group expenses" />
       )}
 
-      {expenses.pageCount > 1 ? (
-        <nav aria-label="Expense pages" className="flex items-center justify-between gap-3 text-sm">
-          {page > 1 ? (
-            <Link
-              href={page === 2 ? base : `${base}?page=${page - 1}`}
-              className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}
-            >
-              <ChevronLeft aria-hidden />
-              Newer
-            </Link>
-          ) : (
-            <span />
-          )}
-          <span className="text-muted-foreground">
-            Page {page} of {expenses.pageCount}
-          </span>
-          {page < expenses.pageCount ? (
-            <Link href={`${base}?page=${page + 1}`} className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}>
-              Older
-              <ChevronRight aria-hidden />
-            </Link>
-          ) : (
-            <span />
-          )}
-        </nav>
-      ) : null}
+      <Pager base={base} page={page} pageCount={expenses.pageCount} label="Expense pages" />
     </div>
   );
 }

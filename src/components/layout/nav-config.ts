@@ -1,4 +1,4 @@
-import { Activity, LayoutDashboard, type LucideIcon, Settings, UserRound, Users } from "lucide-react";
+import { Activity, HandCoins, LayoutDashboard, type LucideIcon, Settings, UserRound, Users } from "lucide-react";
 
 import { ROUTES } from "@/lib/auth/routes";
 
@@ -19,11 +19,12 @@ export const PRIMARY_NAV: readonly NavItem[] = [
   { href: ROUTES.dashboard, label: "Dashboard", icon: LayoutDashboard, available: true },
   { href: ROUTES.groups, label: "Groups", icon: Users, available: true },
   { href: ROUTES.friends, label: "Friends", icon: UserRound, available: true },
-  { href: "/activity", label: "Activity", icon: Activity, available: false }, // M6
+  { href: ROUTES.activity, label: "Activity", icon: Activity, available: true },
 ];
 
 /** Secondary pages: the phone menu and the lower part of the sidebar. */
 export const SECONDARY_NAV: readonly NavItem[] = [
+  { href: ROUTES.settlements, label: "Settlements", icon: HandCoins, available: true },
   { href: ROUTES.settings, label: "Settings", icon: Settings, available: true },
 ];
 
