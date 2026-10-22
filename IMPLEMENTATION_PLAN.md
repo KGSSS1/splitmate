@@ -25,7 +25,12 @@
   - pgTAP 405 ✓ (+26). Integration 17 ✓, plus 2 expected-fail H3 reproductions.
   - Playwright 32/32 ✓ with `--workers=2`. A default-worker run had starved the machine: the dev server grew to 2 GB and free RAM fell below 1 GB.
   - Unit 408/409. The failing test is the pre-existing flaky retry test (review M17): it also failed on the baseline code under load and passes when run alone. Not fixed, because Medium findings wait for a decision.
-- **Staging:** the new migration is **not** on `splitmate-staging`, and needs approval. The `staging` branch push contains app code that calls `my_activity()`, so the activity feed and dashboard need that migration on the hosted DB first (see the review commit notes).
+- **Staging (approved 2026-10-22):**
+  - Migration `20261022060000` was pushed to `splitmate-staging` after a dry run that showed only that file, with no seed. Remote history matches local (14 migrations).
+  - `db lint --linked` is clean, and the advisors show the same 22 expected rule-0029 WARNs. `my_activity` is SECURITY INVOKER, so it isn't flagged.
+  - `staging` was pushed (`c93e380`). The Vercel preview `splitmate-8eblnfza7` was Ready in 34 s, and the branch URL points to it.
+  - **Smoke test** through the deployment URL: the landing page loads, and `/dashboard`, `/activity` and `/settle-up` redirect to login.
+  - **Not checked from this machine:** the branch URL itself times out (in curl and the browser) because the Vercel edge IPs it resolves to (`64.29.17.195`, `216.198.79.195`) are unreachable from this network or VPN, while the deployment URL's edge works. Check it from a phone.
 
 ### 2026-10-22 — M6 Balances, dashboard and settlements complete (staging deploy pending approval)
 
