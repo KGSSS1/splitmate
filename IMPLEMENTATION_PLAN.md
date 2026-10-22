@@ -36,8 +36,9 @@
 - **Staging:**
   - The M6 migration was pushed to `splitmate-staging` on 2026-10-22 (approved; dry run first: only `20261021131200`, no seed). Remote history matches local (13 migrations), and `db lint --linked` is clean.
   - Advisors (warn level) show 22 rule-0029 WARNs: the earlier 21 plus `settle_up_with_friend`. All expected. The new read functions are SECURITY INVOKER and not flagged.
-  - The `staging` branch is **not** pushed yet (next step, needs approval).
-  - Before friends can try it: email delivery (custom SMTP, or confirmation off on staging), Vercel Authentication off, Auth URL configuration. All are dashboard settings for you to change.
+  - The `staging` branch was pushed on 2026-10-22 (approved, `45f2dae`). The Vercel preview built in 57 s (Ready), and the branch URL points to it.
+  - The staging URL loads without a Vercel login (HTTP 200), so Vercel Authentication appears to be off now. `/dashboard` and `/settle-up` redirect to `/login`. Not smoke-tested while logged in.
+  - Before friends can try it: email delivery (custom SMTP, or confirmation off on staging) and the Auth URL configuration. Both are dashboard settings for you to change.
 - **Next:** staging deploy of the MVP (with approval), then M7 recurring expenses and receipts.
 
 ### 2026-10-21 — M5 Expenses complete
