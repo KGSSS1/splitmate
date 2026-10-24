@@ -214,7 +214,7 @@ The project is already connected to `KGSSS1/splitmate`. Open <https://vercel.com
 
 | Key | Preview (staging) | Production (`main`) |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://<staging-ref>.supabase.co` | The production project's URL (at launch) |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<staging-ref>.supabase.co` (the API URL from Project Settings → Data API, **not** the dashboard address `supabase.com/dashboard/project/…`; the build now rejects that) | The production project's URL (at launch) |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Staging `sb_publishable_…` | The production project's key (at launch) |
 | `NEXT_PUBLIC_APP_URL` | **Leave unset** (derived from the branch URL) | **Required**: the production URL, with no trailing slash |
 

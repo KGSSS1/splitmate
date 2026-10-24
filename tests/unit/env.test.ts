@@ -31,6 +31,19 @@ describe("env validation", () => {
     expect(parseServerEnv({ ...validEnv, SUPABASE_SECRET_KEY: undefined }).SUPABASE_SECRET_KEY).toBeUndefined();
   });
 
+  // Staging, 2026-10-24: a dashboard link built fine, then every login failed.
+  it("requires the Supabase API URL, not a dashboard link", () => {
+    expect(() =>
+      parseClientEnv({ ...validEnv, NEXT_PUBLIC_SUPABASE_URL: "https://supabase.com/dashboard/project/abcdefghijklmnopqrst" }),
+    ).toThrow(/NEXT_PUBLIC_SUPABASE_URL must be the project's API URL/);
+    expect(() => parseClientEnv({ ...validEnv, NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co/rest/v1" })).toThrow(
+      /API URL/,
+    );
+    expect(parseClientEnv({ ...validEnv, NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co" }).NEXT_PUBLIC_SUPABASE_URL).toBe(
+      "https://abcdefghijklmnopqrst.supabase.co",
+    );
+  });
+
   it("rejects a secret key placed in a public variable", () => {
     expect(() =>
       parseClientEnv({ ...validEnv, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_secret_oops" }),

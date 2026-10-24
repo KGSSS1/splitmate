@@ -22,9 +22,23 @@ const optionalString = z.preprocess(
   z.string().optional(),
 );
 
+/**
+ * The project's API base URL (`https://<ref>.supabase.co`, or the local
+ * `http://127.0.0.1:54321`): no path, and not a dashboard link. Staging once
+ * had `https://supabase.com/dashboard/project/<ref>`, which builds fine but
+ * makes every auth call fail.
+ */
+const supabaseApiUrl = z.url().refine(
+  (value) => {
+    const url = new URL(value);
+    return (url.pathname === "/" || url.pathname === "") && !/(^|\.)supabase\.com$/.test(url.hostname);
+  },
+  { error: "must be the project's API URL (https://<project-ref>.supabase.co), not a dashboard link" },
+);
+
 const clientSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.url(),
-  NEXT_PUBLIC_SUPABASE_URL: z.url(),
+  NEXT_PUBLIC_SUPABASE_URL: supabaseApiUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().startsWith("sb_publishable_", {
     error: "must be a publishable key (sb_publishable_...)",
   }),
