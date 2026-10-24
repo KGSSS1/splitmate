@@ -4,6 +4,7 @@ import { AccountSummary, AccountSummarySkeleton } from "@/components/layout/acco
 import { AddExpenseButton, BottomNav, SidebarNav } from "@/components/layout/app-nav";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { MobileMenu } from "@/components/layout/mobile-menu";
+import { NotificationsBellLink } from "@/components/notifications/unread-count";
 import { PageSkeleton } from "@/components/layout/page-skeleton";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { ThemePicker } from "@/components/theme/theme-picker";
@@ -25,7 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
 
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-6 border-r bg-sidebar px-4 py-6 text-sidebar-foreground md:flex">
+      <aside className="sticky top-0 hidden h-dvh print:hidden w-64 shrink-0 flex-col gap-6 border-r bg-sidebar px-4 py-6 text-sidebar-foreground md:flex">
         <BrandMark href={ROUTES.dashboard} className="px-2" />
         <AddExpenseButton variant="sidebar" />
         <SidebarNav />
@@ -39,14 +40,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden">
+        <header className="sticky top-0 z-30 flex print:hidden items-center justify-between border-b bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur md:hidden">
           <BrandMark href={ROUTES.dashboard} className="h-14" />
-          <MobileMenu />
+          <div className="flex items-center gap-1">
+            <NotificationsBellLink />
+            <MobileMenu />
+          </div>
         </header>
 
         <main
           id="main"
-          className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:px-8 md:pt-10 md:pb-10"
+          className="mx-auto w-full max-w-5xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:px-8 md:pt-10 md:pb-10 print:max-w-none print:p-0"
         >
           <Suspense fallback={<PageSkeleton />}>
             <OnboardingGate>{children}</OnboardingGate>

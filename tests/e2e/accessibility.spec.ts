@@ -86,6 +86,10 @@ function appPages({ groupId, expenseId, settlementId, binaId, recurringId }: Wor
     `/recurring/${recurringId}`,
     `/recurring/${recurringId}/edit`,
     "/settings",
+    "/notifications",
+    "/search?q=Dinner",
+    "/analytics",
+    "/analytics?range=this-month&by=week",
     // An app URL that doesn't exist (L29: the not-found page inside the app shell).
     "/groups/not-a-group/balances",
   ];
@@ -170,6 +174,9 @@ test("touch targets are at least 44 px on phones", async ({ page, browser, isMob
     `/recurring/${world.recurringId}`,
     `/groups/${world.groupId}/settings`,
     `/settlements/${world.settlementId}`,
+    "/notifications",
+    "/search?q=Dinner",
+    "/analytics",
   ]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible(NAVIGATION);

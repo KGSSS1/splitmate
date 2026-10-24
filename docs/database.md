@@ -25,12 +25,12 @@ Docker must be running.
 
 | Email | Role in seed data |
 | --- | --- |
-| alice@example.test | admin of "Flat 4B"; paid ₹900 for groceries (split equally) |
-| bob@example.test | member; has a pending ₹100 UPI repayment to Alice |
-| carol@example.test | member |
+| alice@example.test | admin of "Flat 4B"; paid ₹900 for groceries, ₹999 for internet, half of a ₹2,400 dinner and a $45 direct expense with Bob |
+| bob@example.test | member; paid ₹30,000 rent and a ₹600 direct expense with Alice; has a pending ₹100 UPI repayment to Alice |
+| carol@example.test | member; paid a ₹1,500 electricity bill |
 | dave@example.test | outsider with no groups or friends (useful for denial checks) |
 
-The seed builds its data through the same RPC functions the app uses, so it is always consistent with the rules below. Local auth emails can be read in Mailpit at <http://127.0.0.1:54324>.
+The expenses are spread over the last three months and several categories, so analytics and search have something to show. The seed builds its data through the same RPC functions the app uses, so it is always consistent with the rules below. Local auth emails can be read in Mailpit at <http://127.0.0.1:54324>.
 
 ## Schema overview
 
@@ -167,6 +167,10 @@ All functions require a signed-in user. Payloads use minor units, and the shares
 | `group_names(group_ids)` | Names of groups the caller is or was in |
 | `group_invitation_list(group_id)` | A group's invitations for current members, addresses masked unless creator or admin |
 | `settle_up_with_friend(idempotency_key, friend_id, items, method?, upi_reference?, note?, settled_on?)` | `items` are `[{group_id, currency, amount}]`, computed by the server; positive amount = the friend pays the caller. One settlement per item, in one transaction. Checks: raw contexts must match the pairwise balance exactly; simplify-on groups need the right direction and no more than either net (SM409 otherwise); both people must be current members of each group (SM403). Owed to the caller → completed; owed by the caller → pending. The key is stored as `settlements.batch_id`, so a retry (even a concurrent one) returns the same IDs |
+| `mark_notifications_read(ids?)` | The caller's notifications: the given IDs (at most 100), or every unread one when `ids` is null. Returns how many changed; read ones keep their time. SECURITY INVOKER (RLS) |
+| `set_notification_preferences(preferences)` | `{"expense_added": false, …}`: in-app on/off per type, upserted into `notification_preferences` (no row = on). Unknown types and non-booleans are SM422. `private.notify` skips types that are off |
+| `search_expenses(query, categories?, limit?, offset?)` | Expenses the caller can see (RLS) whose description, notes, category key or tags contain every word of the query (case-insensitive substrings, so `%` and `_` are plain characters), or whose category is in `categories` (the app passes the categories whose label matches). Newest first, with `total_count`. At most 100 characters (SM422) |
+| `my_expense_shares(from, to, limit?, offset?)` | Analytics and the expenses CSV: each active expense dated in the range that the caller pays for or shares in **in its current version**, with the total, what they paid, their share and the recurring template that added it. Pages of at most 1000 rows (the Data API cap) in a stable order; the app reads every page |
 | `group_balances(group_id)`, `friend_balances()`, `my_group_balances()`, `friend_group_balances(friend_id)`, `group_pairwise_balances(group_id)`, `my_pairwise_balances()`, `my_simplified_group_balances()`, `my_activity(limit, offset)`, `profile_cards(user_ids)` | Read helpers |
 
 ### Error codes
@@ -206,6 +210,7 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `140_review_batch1` | Review batch 1: `withdrawn`, one open payment per debt, per-currency maximum and balance range, split-detail checks, history and empty saves, neutral friend requests, former members and group names, no direct group updates, masked invitee addresses |
 | `150_review_batch2` | Review batch 2: idempotency keys scoped to their creator (expenses, settlements, settle-up batches); pairwise balances net debts in both directions |
 | `160_recurring_receipts` | M7: schedule arithmetic (month ends, 29 February), the generator run repeatedly (each occurrence once), catch-up, time zones, end dates, create/edit/pause/resume/cancel with their checks and audit, failed occurrences, the pg_cron job, receipt limits and non-members denied |
+| `180_notifications_search_analytics` | M8: `my_expense_shares` against the raw tables (current version only, no cancelled or out-of-range rows, other groups hidden, paging, anonymous denied); `search_expenses` (all words, notes and tags, `%` literal, category list, members see group expenses they aren't in, other groups hidden, length limit); marking read only your own notifications; preferences stop and restart notifications, with input checks |
 | `170_auth_user_deletion` | An auth user deleted outside the app: profile anonymized, history kept, the email can sign up again; leftover profiles free their email at sign-up |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

@@ -4,6 +4,7 @@ import { LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { useTransition } from "react";
 
+import { UnreadBadge } from "@/components/notifications/unread-count";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,10 +34,11 @@ export function MobileMenu() {
         <Menu aria-hidden className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        {SECONDARY_NAV.filter((item) => item.available).map(({ href, label, icon: Icon }) => (
+        {SECONDARY_NAV.filter((item) => item.available).map(({ href, label, icon: Icon, unreadBadge }) => (
           <DropdownMenuItem key={href} render={<Link href={href} />} className="min-h-11">
             <Icon aria-hidden />
             {label}
+            {unreadBadge ? <UnreadBadge className="ml-auto" /> : null}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />

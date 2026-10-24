@@ -60,7 +60,96 @@ begin
       jsonb_build_object('debtor_id', v_bob, 'creditor_id', v_alice, 'amount', 30000),
       jsonb_build_object('debtor_id', v_carol, 'creditor_id', v_alice, 'amount', 30000)
     ),
-    p_category => 'Groceries'
+    p_category => 'groceries'
+  );
+
+  -- A few months of varied expenses, so analytics and search have something to show.
+  perform public.create_expense(
+    'aaaaaaaa-0000-4000-8000-000000000003', v_group, 'Internet', 99900, 'INR', current_date - 50, 'equal',
+    jsonb_build_array(jsonb_build_object('user_id', v_alice, 'amount', 99900)),
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 33300),
+      jsonb_build_object('user_id', v_bob, 'amount', 33300),
+      jsonb_build_object('user_id', v_carol, 'amount', 33300)
+    ),
+    jsonb_build_array(
+      jsonb_build_object('debtor_id', v_bob, 'creditor_id', v_alice, 'amount', 33300),
+      jsonb_build_object('debtor_id', v_carol, 'creditor_id', v_alice, 'amount', 33300)
+    ),
+    p_category => 'utilities', p_tags => array['monthly']
+  );
+
+  -- Dinner paid half each by Alice and Bob; Carol owes each of them ₹400.
+  perform public.create_expense(
+    'aaaaaaaa-0000-4000-8000-000000000004', v_group, 'Dinner at Koshy''s', 240000, 'INR', current_date - 65, 'equal',
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 120000),
+      jsonb_build_object('user_id', v_bob, 'amount', 120000)
+    ),
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 80000),
+      jsonb_build_object('user_id', v_bob, 'amount', 80000),
+      jsonb_build_object('user_id', v_carol, 'amount', 80000)
+    ),
+    jsonb_build_array(
+      jsonb_build_object('debtor_id', v_carol, 'creditor_id', v_alice, 'amount', 40000),
+      jsonb_build_object('debtor_id', v_carol, 'creditor_id', v_bob, 'amount', 40000)
+    ),
+    p_category => 'food'
+  );
+
+  -- A direct expense between Alice and Bob (friends through the group), in USD.
+  perform public.create_expense(
+    'aaaaaaaa-0000-4000-8000-000000000005', null, 'Conference snacks', 4500, 'USD', current_date - 80, 'equal',
+    jsonb_build_array(jsonb_build_object('user_id', v_alice, 'amount', 4500)),
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 2250),
+      jsonb_build_object('user_id', v_bob, 'amount', 2250)
+    ),
+    jsonb_build_array(jsonb_build_object('debtor_id', v_bob, 'creditor_id', v_alice, 'amount', 2250)),
+    p_category => 'food'
+  );
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_bob, 'role', 'authenticated')::text, true);
+  perform public.create_expense(
+    'aaaaaaaa-0000-4000-8000-000000000006', v_group, 'Rent', 3000000, 'INR', current_date - 35, 'equal',
+    jsonb_build_array(jsonb_build_object('user_id', v_bob, 'amount', 3000000)),
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 1000000),
+      jsonb_build_object('user_id', v_bob, 'amount', 1000000),
+      jsonb_build_object('user_id', v_carol, 'amount', 1000000)
+    ),
+    jsonb_build_array(
+      jsonb_build_object('debtor_id', v_alice, 'creditor_id', v_bob, 'amount', 1000000),
+      jsonb_build_object('debtor_id', v_carol, 'creditor_id', v_bob, 'amount', 1000000)
+    ),
+    p_category => 'rent'
+  );
+  perform public.create_expense(
+    'aaaaaaaa-0000-4000-8000-000000000007', null, 'Movie tickets', 60000, 'INR', current_date - 10, 'equal',
+    jsonb_build_array(jsonb_build_object('user_id', v_bob, 'amount', 60000)),
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 30000),
+      jsonb_build_object('user_id', v_bob, 'amount', 30000)
+    ),
+    jsonb_build_array(jsonb_build_object('debtor_id', v_alice, 'creditor_id', v_bob, 'amount', 30000)),
+    p_category => 'entertainment'
+  );
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_carol, 'role', 'authenticated')::text, true);
+  perform public.create_expense(
+    'aaaaaaaa-0000-4000-8000-000000000008', v_group, 'Electricity bill', 150000, 'INR', current_date - 20, 'equal',
+    jsonb_build_array(jsonb_build_object('user_id', v_carol, 'amount', 150000)),
+    jsonb_build_array(
+      jsonb_build_object('user_id', v_alice, 'amount', 50000),
+      jsonb_build_object('user_id', v_bob, 'amount', 50000),
+      jsonb_build_object('user_id', v_carol, 'amount', 50000)
+    ),
+    jsonb_build_array(
+      jsonb_build_object('debtor_id', v_alice, 'creditor_id', v_carol, 'amount', 50000),
+      jsonb_build_object('debtor_id', v_bob, 'creditor_id', v_carol, 'amount', 50000)
+    ),
+    p_category => 'utilities'
   );
 
   -- Bob records a ₹100 UPI repayment; it stays pending until Alice confirms.

@@ -4,18 +4,44 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** Newer / Older links for a list paged with `?page=` (page 1 is the bare URL). Nothing for a single page. */
-export function Pager({ base, page, pageCount, label }: { base: string; page: number; pageCount: number; label: string }) {
+/**
+ * Newer / Older links for a list paged with `?page=` (page 1 has no page
+ * parameter). `query` keeps other parameters, such as a search. Nothing for a
+ * single page.
+ */
+export function Pager({
+  base,
+  page,
+  pageCount,
+  label,
+  query = {},
+  newerLabel = "Newer",
+  olderLabel = "Older",
+}: {
+  base: string;
+  page: number;
+  pageCount: number;
+  label: string;
+  query?: Record<string, string>;
+  newerLabel?: string;
+  olderLabel?: string;
+}) {
   if (pageCount <= 1) return null;
+  const href = (target: number) => {
+    const params = new URLSearchParams(query);
+    if (target > 1) params.set("page", String(target));
+    const search = params.toString();
+    return search ? `${base}?${search}` : base;
+  };
   return (
     <nav aria-label={label} className="flex items-center justify-between gap-3 text-sm">
       {page > 1 ? (
         <Link
-          href={page === 2 ? base : `${base}?page=${page - 1}`}
+          href={href(page - 1)}
           className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}
         >
           <ChevronLeft aria-hidden />
-          Newer
+          {newerLabel}
         </Link>
       ) : (
         <span />
@@ -24,8 +50,8 @@ export function Pager({ base, page, pageCount, label }: { base: string; page: nu
         Page {page} of {pageCount}
       </span>
       {page < pageCount ? (
-        <Link href={`${base}?page=${page + 1}`} className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}>
-          Older
+        <Link href={href(page + 1)} className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}>
+          {olderLabel}
           <ChevronRight aria-hidden />
         </Link>
       ) : (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
 
+import { UnreadBadge } from "@/components/notifications/unread-count";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +83,7 @@ function SidebarNavLinkView({ item, pathname }: { item: NavItem; pathname: strin
       {active ? <ActiveIndicator className="inset-y-2 left-0 w-1" /> : null}
       <Icon aria-hidden className={cn("size-4", active && "text-primary")} />
       {item.label}
+      {item.unreadBadge ? <UnreadBadge className="ml-auto" /> : null}
     </Link>
   );
 }
@@ -95,7 +97,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden print:hidden"
     >
       <ul className="mx-auto flex max-w-lg items-stretch px-2">
         {[first, second].map((item) => item && <BottomNavLink key={item.href} item={item} />)}

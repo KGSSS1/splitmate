@@ -2,6 +2,44 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-25: M8 Notifications, search, analytics and exports complete (local; not pushed)
+
+- **Migration** `20261025090000_notifications_search_analytics.sql` (SECURITY INVOKER reads and writes, so RLS applies throughout):
+  - `mark_notifications_read(ids?)`: the given IDs (at most 100) or every unread one; returns the count. Someone else's IDs change nothing.
+  - `set_notification_preferences(jsonb)`: in-app on/off per type (no row = on). Unknown types and non-booleans are SM422. `private.notify` already skipped types that are off.
+  - `search_expenses(query, categories?, limit?, offset?)`: every word must appear in the description, notes, category or tags (substring match, so `%`/`_` are literal), or the category is one whose label matched. Max 100 characters.
+  - `my_expense_shares(from, to, limit?, offset?)`: the caller's paid and share per active expense, current version only, with the recurring template that added it. Pages of ≤ 1000 rows (the Data API cap); the app reads every page and refuses more than 20,000 rows with "choose a shorter range" rather than showing partial totals.
+  - Index `settlements_settled_on_idx`.
+- **Notifications:** `/notifications` (25 per page, unread rows marked with a dot and the word "Unread", "Mark read" per row, "Mark all as read", following a row marks it read). Unread badge in the sidebar and phone menu, and a bell with the count in the phone header. The badge asks `GET /notifications/unread-count` on every navigation, when the tab becomes visible and after marking read (no Realtime; SPEC §15 allows polling on navigation). Preferences are in Settings → Notifications, grouped as Expenses / Repayments / Groups / Friends (in-app only; email notifications don't exist).
+- **Search:** `/search?q=` (also in the nav). Friends by name, groups you are or were in, and expenses you can see (members find group expenses they aren't part of; cancelled ones are listed and labelled), 20 per page.
+- **Analytics:** `/analytics` (nav: Analytics).
+  - Filters in one row: period presets (this month, last 3/6/12 months, this year) or custom dates up to 3 years, trend by week or month (weeks only up to about a year), currency.
+  - Summary per currency, kept apart: **your spending (share)**, **you paid**, **repayments made / received** (completed, in the period), and **owed now** (all time, from the ledger). A "What these numbers mean" box defines each.
+  - Charts (Recharts 3.10.1, new dependency, plus `react-is` 19.3.0 to match React): spending by category, by group (direct as one row), by week/month. Each has a title, a one-sentence summary (caption and SVG `<desc>`), Recharts' keyboard layer and a Chart / Table toggle; the table is always in the page. Largest expenses (by your share) and recurring costs (in-period spending from schedules, active schedules per frequency with "≈ per year").
+  - **CSV export** (`GET /analytics/export?kind=expenses|settlements&…`, same filters): built on the server with the viewer's session. Expenses: the ones you pay for or share in, with your paid / share / net. Repayments: every status, made or received. RFC 4180, CRLF, UTF-8 BOM, exact decimal amounts, formula-injection guard.
+  - **Print stylesheet** (`globals.css`): no navigation or buttons, light palette even in dark mode, tables instead of charts, rows don't split. "Print or save as PDF" opens the browser dialog; no PDF library.
+- **Seed:** five more expenses over the last three months (rent, internet, a multi-payer dinner, a direct movie, a USD direct expense), and the groceries category is now the key `groceries`. `docs/database.md` lists them.
+- **New modules:** `src/lib/{notifications,analytics,search,export}/*`, `src/lib/validation/{analytics,notifications}.ts`, `src/server/{notifications,search,analytics,exports}.ts`, `src/server/actions/notifications.ts`, `src/components/{notifications,analytics}/*`. `Pager` takes extra query parameters; `toListItems` in `src/server/expenses.ts` is exported for search; `formatMoneyCompact` for axis labels. Docs: `docs/architecture.md` (M8 section), `docs/database.md`, README.
+- **Tests:**
+  - Unit (+59): notification wording for every type and the type list against the SQL domain; periods and buckets; aggregation (with a fast-check property: every breakdown adds up to the currency total, never mixing currencies); CSV quoting and injection; search terms; report filters; badge, notification list, preferences form, chart/table toggle; notification actions and both route handlers with the database mocked.
+  - pgTAP `180_notifications_search_analytics` (40).
+  - Integration `analytics-exports` (7): **chart totals equal SQL sums** for seeded Alice and for four test users (every breakdown, both granularities, each currency, repayments, recurring); **exports contain only authorized rows** (A's file has no expense she can see but isn't in, nothing from another group; repayments file only hers; a forged viewer ID still gets nothing through RLS); search scope; notifications marked per person.
+  - E2E `notifications-analytics.spec.ts` (×2 viewports): badge counts, follow and mark all read, preference stops the next notification, analytics figures and table view, print mode, CSV contents, search, and an outsider who finds nothing and exports only a header. The axe spec now covers `/notifications`, `/search`, `/analytics` (two filter sets) in both themes; the phone touch-target test covers them too.
+- **Checks:**
+  - Baseline before any change: unit 548, integration 30, pgTAP 565, all passing.
+  - `db reset` from scratch ✓ (21 migrations); types regenerated; lint, typecheck and build ✓; `db lint` and advisors ✓ (no issues).
+  - Unit 607 ✓. Integration 37 ✓. pgTAP 605 ✓.
+  - Playwright 50 passed, 2 skipped (phone-only tests on desktop) with `--workers=2`, including axe on the new pages.
+- **Known limitations:**
+  - Analytics and exports cover expenses you take part in. A group-wide export (every expense in a group) isn't there yet.
+  - Charts show one currency at a time; there is no converted total (M9's optional conversion).
+  - Search is substring matching without ranking or accent folding (`e` doesn't match `é`). Fine for v1 volumes; a trigram index would be the next step if it gets slow.
+  - The badge doesn't update while you sit on a page; it refreshes on navigation and when the tab regains focus.
+  - Email notifications don't exist (`notification_preferences.email` is unused).
+  - The Claude browser pane only reveals streamed content while visible; pages were checked with Playwright screenshots instead (desktop/phone, light/dark, print).
+- **Not done (needs approval):** pushing the migration and branch to staging.
+- **Next:** M9 (conversion, PWA, privacy/data export and deletion, hardening, deployment).
+
 ### 2026-10-24: Staging login fix (wrong Supabase URL on Vercel Preview)
 
 - **Symptom:** logging in on staging showed "Something went wrong. Please try again." for a valid, confirmed account.
@@ -544,12 +582,13 @@
 - [x] Generator twice → each occurrence once; non-members denied receipts
 - [x] M7 migration and branch pushed to staging (approved 2026-10-24)
 
-### M8 — Notifications, search, analytics, exports
-- [ ] In-app notifications created inside DB functions; unread count, mark read, preferences
-- [ ] Search
-- [ ] Analytics (paid / your share / owed / settlements) with charts and table views
-- [ ] Server-side CSV export; print stylesheet
-- [ ] Tests for each; charts match database totals
+### M8 — Notifications, search, analytics, exports ✅
+- [x] In-app notifications created inside DB functions; unread count, mark read, preferences
+- [x] Search (friends, groups, expenses the viewer can access)
+- [x] Analytics (paid / your share / owed / settlements) with charts and table views
+- [x] Server-side CSV export; print stylesheet
+- [x] Tests for each; charts match database totals
+- [ ] M8 migration and branch pushed to staging — **needs approval**
 
 ### M9 — Multi-currency conversion, PWA, privacy, hardening, deployment
 - [ ] Optional conversion with stored `exchange_rates` (Frankfurter)

@@ -20,6 +20,9 @@ export const ROUTES = {
   settlements: "/settlements",
   settleUp: "/settle-up",
   recurring: "/recurring",
+  notifications: "/notifications",
+  search: "/search",
+  analytics: "/analytics",
 } as const;
 
 /**

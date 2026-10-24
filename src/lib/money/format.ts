@@ -33,3 +33,17 @@ export function formatMoney(minor: number, currency: string, options: FormatMone
   });
   return formatter.format(minorToDecimalString(minor, currency) as Intl.StringNumericLiteral);
 }
+
+/**
+ * Short form for chart axes and labels: ₹1.2K, ₹3.4L (en-IN), $12M. Rounded for
+ * display only, from the exact decimal string; never use it for stored amounts.
+ */
+export function formatMoneyCompact(minor: number, currency: string, locale = DEFAULT_LOCALE): string {
+  const { code } = getCurrency(currency);
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: code,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(minorToDecimalString(minor, currency) as Intl.StringNumericLiteral);
+}

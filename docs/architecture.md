@@ -214,3 +214,24 @@ Rejected and cancelled are final. Completing twice is an invalid transition, so 
 - **Saving is blocked until the split resolves.** The submit button is disabled while pending and while the preview has issues. Description and date are checked on submit.
 - **Exclusions:** unticked people are not participants. A 0% share in a percentage split is stored as a zero share. Payers don't have to take part.
 - **Amounts in the browser are never trusted:** the action receives the typed strings, not computed minor units.
+
+# Notifications, search, analytics and exports (M8)
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Notification wording | `src/lib/notifications/describe.ts` | One sentence (and an optional second line) per type, from the recipient's side, with the link it leads to. Every `data` field is checked; malformed JSON gives plainer wording, unknown types are skipped. |
+| Types and preferences | `src/lib/notifications/types.ts` | The list matches the `notification_type` domain (a unit test compares them). `preferenceMap` fills in "on" for types without a row. |
+| Reads and actions | `src/server/notifications.ts`, `src/server/actions/notifications.ts` | `loadNotifications(client, page)` pages 25 at a time. `markNotificationsRead` (no refresh: it also runs as the viewer follows a link), `markAllNotificationsRead`, `saveNotificationPreferences` (all types at once). |
+| Unread badge | `src/components/notifications/unread-count.tsx`, `GET /notifications/unread-count` | The badge (sidebar, phone menu, phone header bell) asks the endpoint on every navigation, when the tab becomes visible and when notifications are marked read (a window event). Requests are shared between badges. No Realtime (SPEC §15 allows polling on navigation). |
+| Search | `src/server/search.ts`, `/search?q=` | Friends (accepted friendships, by name) and groups (current and former, names via `group_names`) are filtered in TypeScript with the same word matching as `search_expenses`; expenses come from that RPC, 20 per page. A plain GET form, so results have URLs. |
+| Analytics | `src/lib/analytics/{periods,aggregate}.ts`, `src/server/analytics.ts`, `/analytics` | One set of rows (`my_expense_shares`, completed settlements, active templates, ledger balances) feeds every figure, so tables and charts add up to the database totals (tested against SQL sums in `tests/integration/analytics-exports.test.ts`). Amounts stay integers per currency; charts show one currency at a time. |
+| CSV export | `src/lib/export/csv.ts`, `src/server/exports.ts`, `GET /analytics/export?kind=expenses\|settlements&…` | Built on the server with the viewer's own session, so RLS decides what can appear. Same filters as the page. |
+
+- **Words (SPEC §14):** *spending* is the viewer's share; *you paid* is what they put in; *owed* is the balance now from the ledger, shown apart and labelled "all time"; *repayments* are completed settlements in the period. The page explains each one.
+- **Periods:** presets end today in the profile's time zone (this month, last 3/6/12 months, this year) or custom dates up to three years. Weeks start on Monday; weekly buckets only up to about a year. Empty weeks and months show as zero.
+- **Recurring costs:** spending in the period from expenses a schedule added, per schedule, and active schedules per frequency with your share each time and an approximate yearly cost (365 days, 52 weeks, 12 months), labelled "≈".
+- **Charts:** Recharts, one series in the brand green, bars at most 24 px with 4 px rounded ends, hairline grid. Each chart has a title, a one-sentence summary (figure caption and SVG `<desc>`), Recharts' keyboard layer and a Chart / Table toggle; the table is always in the page. Breakdowns show 8 bars (the rest as "Everything else"); tables show every row with a total.
+- **Large ranges:** the app reads at most 20,000 rows per report or export; beyond that it asks for a shorter range rather than showing partial totals.
+- **CSV:** RFC 4180 quoting, CRLF line endings, a UTF-8 byte-order mark for spreadsheet apps, exact decimal amounts (`minorToDecimalString`), and a leading apostrophe on text that a spreadsheet would run as a formula (`=`, `+`, `-`, `@`; plain negative numbers are left alone). The expenses file lists active expenses you take part in; the repayments file lists every status.
+- **Printing:** `@media print` in `globals.css` hides the navigation and buttons, switches to the light palette, hides charts and shows their tables, and keeps rows and headings from splitting across pages. "Print or save as PDF" calls `window.print()`; no PDF library.
+

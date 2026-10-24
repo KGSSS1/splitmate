@@ -67,6 +67,7 @@ Local services: Studio <http://127.0.0.1:54323>, Mailpit (auth emails) <http://1
 - Password reset emails also land in Mailpit.
 - **Recurring expenses:** on Add expense, set "Repeat" (or use Recurring → Add recurring expense). Anything due up to today is added when you save. Later dates are added by the hourly `pg_cron` job while the local stack runs; to add due ones right away, run `npm run db:recurring`.
 - **Receipts:** open an expense and use "Add receipt" (JPEG, PNG, WebP or PDF, up to 5 MB).
+- **Notifications, search, analytics:** log in as Alice and open Notifications (unread badge in the sidebar or the bell on phones), Search, or Analytics (filters, Chart/Table toggles, "Print or save as PDF", Expenses CSV and Repayments CSV). Turn notification types on or off in Settings → Notifications.
 - After changing `supabase/config.toml` or `supabase/templates/`, restart the stack (`npm run db:stop` then `npm run db:start`).
 - Email links go to `NEXT_PUBLIC_APP_URL`/auth/confirm. That URL must match `additional_redirect_urls` in `supabase/config.toml` (`http://localhost:3000/**` and the E2E port `http://localhost:3100/**` are allowed).
 

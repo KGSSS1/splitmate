@@ -1,4 +1,16 @@
-import { Activity, HandCoins, LayoutDashboard, type LucideIcon, Repeat, Settings, UserRound, Users } from "lucide-react";
+import {
+  Activity,
+  Bell,
+  ChartColumn,
+  HandCoins,
+  LayoutDashboard,
+  type LucideIcon,
+  Repeat,
+  Search,
+  Settings,
+  UserRound,
+  Users,
+} from "lucide-react";
 
 import { ROUTES } from "@/lib/auth/routes";
 
@@ -12,6 +24,8 @@ export interface NavItem {
    * builds the page (IMPLEMENTATION_PLAN.md).
    */
   available: boolean;
+  /** Shows the unread notification count next to the label. */
+  unreadBadge?: boolean;
 }
 
 /** Bottom navigation on phones, main section of the sidebar on desktop (SPEC §9). */
@@ -24,6 +38,9 @@ export const PRIMARY_NAV: readonly NavItem[] = [
 
 /** Secondary pages: the phone menu and the lower part of the sidebar. */
 export const SECONDARY_NAV: readonly NavItem[] = [
+  { href: ROUTES.search, label: "Search", icon: Search, available: true },
+  { href: ROUTES.notifications, label: "Notifications", icon: Bell, available: true, unreadBadge: true },
+  { href: ROUTES.analytics, label: "Analytics", icon: ChartColumn, available: true },
   { href: ROUTES.settlements, label: "Settlements", icon: HandCoins, available: true },
   { href: ROUTES.recurring, label: "Recurring", icon: Repeat, available: true },
   { href: ROUTES.settings, label: "Settings", icon: Settings, available: true },

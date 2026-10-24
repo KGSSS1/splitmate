@@ -675,9 +675,17 @@ isOneToOne: false
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
                            },
+"mark_notifications_read":
+{ Args: { "p_ids"?: (string)[] }; Returns: number
+                           },
 "my_activity":
 { Args: { "p_limit"?: number,"p_offset"?: number }; Returns: {
               "action": string,"actor_id": string,"after": Json,"before": Json,"created_at": string,"entity_id": string,"entity_type": string,"group_id": string,"id": string,"total_count": number
+            }[]
+                           },
+"my_expense_shares":
+{ Args: { "p_from": string,"p_limit"?: number,"p_offset"?: number,"p_to": string }; Returns: {
+              "amount": number,"category": string,"currency": string,"description": string,"expense_date": string,"expense_id": string,"group_id": string,"paid": number,"recurring_expense_id": string,"share": number
             }[]
                            },
 "my_group_balances":
@@ -714,6 +722,11 @@ isOneToOne: false
 "revoke_invitation":
 { Args: { "p_invitation_id": string }; Returns: undefined
                            },
+"search_expenses":
+{ Args: { "p_categories"?: (string)[],"p_limit"?: number,"p_offset"?: number,"p_query": string }; Returns: {
+              "amount": number,"category": string,"currency": string,"description": string,"expense_date": string,"group_id": string,"id": string,"status": string,"total_count": number,"version": number
+            }[]
+                           },
 "send_friend_request":
 { Args: { "p_email": string }; Returns: {
               "friend_id": string,"request_id": string,"status": string
@@ -721,6 +734,9 @@ isOneToOne: false
                            },
 "set_member_role":
 { Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: undefined
+                           },
+"set_notification_preferences":
+{ Args: { "p_preferences": Json }; Returns: undefined
                            },
 "set_recurring_expense_status":
 { Args: { "p_recurring_id": string,"p_status": string }; Returns: undefined

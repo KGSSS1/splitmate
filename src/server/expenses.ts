@@ -312,7 +312,8 @@ export interface ExpensePage {
   total: number;
 }
 
-async function toListItems(
+/** List rows with who paid and the viewer's net (search reuses it). */
+export async function toListItems(
   supabase: Client,
   userId: string,
   rows: { id: string; description: string; amount: number; currency: string; expense_date: string; category: string | null; status: string; version: number }[],
