@@ -50,10 +50,14 @@ select lives_ok(
   format($$ insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes) values (%L, %L, %L, 'image/jpeg', 2048) $$,
          tests.expense_id('lunch'), tests.uid('alice'), tests.expense_id('lunch') || '/receipt.jpg'),
   'the uploader records the attachment');
+insert into storage.objects (bucket_id, name, owner_id)
+values ('receipts', tests.expense_id('lunch') || '/anim.gif', tests.uid('alice'));
 select throws_ok(
   format($$ insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes) values (%L, %L, %L, 'image/gif', 2048) $$,
          tests.expense_id('lunch'), tests.uid('alice'), tests.expense_id('lunch') || '/anim.gif'),
   '23514', 'new row for relation "attachments" violates check constraint "attachments_mime_type_check"', 'attachment types are restricted');
+select tests.allow_storage_delete();
+delete from storage.objects where bucket_id = 'receipts' and name like '%/anim.gif';
 
 -- ---------------------------------------------------------------- delete (as the Storage API would)
 select tests.authenticate_as('bob');

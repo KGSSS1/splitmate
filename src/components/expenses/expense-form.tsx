@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActionSubmit } from "@/hooks/use-action-submit";
 import { createIdempotencyKey } from "@/lib/accounting/idempotency";
+import { formatExpenseDate } from "@/lib/expenses/dates";
 import { blankPeople } from "@/lib/expenses/form-values";
 import {
   ADJUSTMENT_KINDS,
@@ -37,19 +38,29 @@ import {
 import { type ExpenseFormValues, type ExpenseIssue, MULTIPLE_PAYERS, resolveExpense } from "@/lib/expenses/resolve";
 import { isCurrencyCode } from "@/lib/money/currencies";
 import { formatMoney, minorToDecimalString } from "@/lib/money/format";
-import { CURRENCY_OPTIONS } from "@/lib/profile/options";
+import { CURRENCY_OPTIONS, timeZoneOptions } from "@/lib/profile/options";
+import { describeSchedule, FREQUENCIES, FREQUENCY_LABELS, isFrequency, upcomingDates } from "@/lib/recurring/schedule";
 import { cn } from "@/lib/utils";
-import { expenseFormSchema, parseSplitWith } from "@/lib/validation/expenses";
+import { isExpenseDate, parseSplitWith } from "@/lib/validation/expenses";
+import { DEFAULT_TIME_ZONE } from "@/lib/validation/profile";
+import { expenseEditorSchema, NO_REPEAT, noRepeat, type RepeatValues } from "@/lib/validation/recurring";
 import { createExpense, updateExpense } from "@/server/actions/expenses";
+import { createRecurringExpense, updateRecurringExpense } from "@/server/actions/recurring";
 import type { ExpenseFormOptions, ExpensePerson } from "@/server/expenses";
 
 import { SplitPreview } from "./split-preview";
 
-type Values = z.input<typeof expenseFormSchema>;
+type Values = z.input<typeof expenseEditorSchema>;
 
+/**
+ * - `create`: a new expense, or a recurring one when "Repeat" is set.
+ * - `edit`: an existing expense (no "Repeat").
+ * - `edit-recurring`: a recurring template; changes apply to future expenses only.
+ */
 export type ExpenseFormMode =
   | { kind: "create" }
-  | { kind: "edit"; expenseId: string; expectedVersion: number };
+  | { kind: "edit"; expenseId: string; expectedVersion: number }
+  | { kind: "edit-recurring"; recurringId: string; expectedVersion: number };
 
 /** Everyone who can take part where the expense belongs: group members, or you and the friend. */
 function peopleFor(options: ExpenseFormOptions, splitWith: string): ExpensePerson[] {
@@ -63,35 +74,46 @@ function peopleFor(options: ExpenseFormOptions, splitWith: string): ExpensePerso
 }
 
 /**
- * Add or edit an expense (SPEC §10). Mobile first: one column on phones, the
- * live preview beside the form on wide screens. Saving is blocked until the
- * split resolves; the server resolves it again from the same values.
+ * Add or edit an expense (SPEC §10), or a recurring one (SPEC §12). Mobile
+ * first: one column on phones, the live preview beside the form on wide
+ * screens. Saving is blocked until the split resolves; the server resolves it
+ * again from the same values.
  */
 export function ExpenseForm({
   options,
-  defaultValues,
+  defaultValues: initialValues,
   mode,
 }: {
   options: ExpenseFormOptions;
-  defaultValues: Values;
+  defaultValues: Omit<Values, "repeat"> & { repeat?: RepeatValues };
   mode: ExpenseFormMode;
 }) {
   // One key for the life of this form: retries and double submits reuse it (SPEC §6).
   const [idempotencyKey] = useState(createIdempotencyKey);
-  const form = useForm<Values, unknown, z.output<typeof expenseFormSchema>>({
-    resolver: zodResolver(expenseFormSchema),
+  const defaultValues: Values = { ...initialValues, repeat: initialValues.repeat ?? noRepeat(DEFAULT_TIME_ZONE) };
+  const form = useForm<Values, unknown, z.output<typeof expenseEditorSchema>>({
+    resolver: zodResolver(expenseEditorSchema),
     defaultValues,
   });
   const { control, register } = form;
   const errors = form.formState.errors;
 
-  const action = (values: Values) =>
-    mode.kind === "create"
-      ? createExpense({ idempotencyKey, values })
-      : updateExpense({ expenseId: mode.expenseId, expectedVersion: mode.expectedVersion, values });
+  const action = (values: z.output<typeof expenseEditorSchema>) => {
+    switch (mode.kind) {
+      case "create":
+        return values.repeat.frequency === NO_REPEAT
+          ? createExpense({ idempotencyKey, values })
+          : createRecurringExpense({ idempotencyKey, values });
+      case "edit":
+        return updateExpense({ expenseId: mode.expenseId, expectedVersion: mode.expectedVersion, values });
+      case "edit-recurring":
+        return updateRecurringExpense({ recurringId: mode.recurringId, expectedVersion: mode.expectedVersion, values });
+    }
+  };
   const { pending, submit, error } = useActionSubmit(action, form.setError);
 
   const values = useWatch({ control }) as Values;
+  const repeating = values.repeat.frequency !== NO_REPEAT;
   const result = useMemo(() => resolveExpense(values as ExpenseFormValues), [values]);
   const people = peopleFor(options, values.splitWith);
   const names = useMemo(() => {
@@ -170,8 +192,14 @@ export function ExpenseForm({
                   label="Split with"
                   options={contextOptions}
                   value={field.value}
-                  disabled={mode.kind === "edit"}
-                  hint={mode.kind === "edit" ? "An expense stays in its group or with its friend." : undefined}
+                  disabled={mode.kind !== "create"}
+                  hint={
+                    mode.kind === "edit"
+                      ? "An expense stays in its group or with its friend."
+                      : mode.kind === "edit-recurring"
+                        ? "A recurring expense stays in its group or with its friend."
+                        : undefined
+                  }
                   onChange={(event) => changeSplitWith(event.target.value)}
                   error={errors.splitWith?.message}
                 />
@@ -215,7 +243,7 @@ export function ExpenseForm({
             </div>
             <div className="grid items-start gap-3 sm:grid-cols-2">
               <TextField
-                label="Date"
+                label={repeating ? "First date" : "Date"}
                 type="date"
                 defaultValue={defaultValues.date}
                 error={errors.date?.message}
@@ -228,6 +256,15 @@ export function ExpenseForm({
                 {...register("category")}
               />
             </div>
+            {mode.kind !== "edit" ? (
+              <RepeatFields
+                allowNever={mode.kind === "create"}
+                values={values}
+                defaultTimeZone={defaultValues.repeat.timezone}
+                register={register}
+                errors={errors}
+              />
+            ) : null}
           </CardContent>
         </Card>
 
@@ -335,10 +372,87 @@ export function ExpenseForm({
           </CardContent>
         </Card>
         <SubmitButton pending={pending} disabled={!result.ok}>
-          {mode.kind === "create" ? "Save expense" : "Save changes"}
+          {mode.kind !== "create" ? "Save changes" : repeating ? "Save recurring expense" : "Save expense"}
         </SubmitButton>
       </div>
     </form>
+  );
+}
+
+/**
+ * How often the expense repeats, until when, and in which time zone "today"
+ * is worked out. Shows the rule in words and the next few dates.
+ */
+function RepeatFields({
+  allowNever,
+  values,
+  defaultTimeZone,
+  register,
+  errors,
+}: {
+  allowNever: boolean;
+  values: Values;
+  defaultTimeZone: string;
+  register: UseFormRegister<Values>;
+  errors: FieldErrors<Values>;
+}) {
+  const frequency = values.repeat.frequency;
+  const zones = useMemo(() => timeZoneOptions(defaultTimeZone), [defaultTimeZone]);
+  const frequencyOptions = [
+    ...(allowNever ? [{ value: NO_REPEAT, label: "Doesn't repeat" }] : []),
+    ...FREQUENCIES.map((value) => ({ value, label: FREQUENCY_LABELS[value] })),
+  ];
+  const start = values.date;
+  const end = values.repeat.endDate;
+  const preview =
+    isFrequency(frequency) && isExpenseDate(start)
+      ? {
+          rule: describeSchedule(start, frequency),
+          dates: upcomingDates(start, frequency, { count: 3, endDate: /^\d{4}-\d{2}-\d{2}$/.test(end) ? end : null }),
+        }
+      : null;
+
+  return (
+    <div className="grid gap-3 border-t pt-4">
+      <NativeSelect
+        label="Repeat"
+        options={frequencyOptions}
+        error={errors.repeat?.frequency?.message}
+        {...register("repeat.frequency")}
+      />
+      {frequency !== NO_REPEAT ? (
+        <>
+          <div className="grid items-start gap-3 sm:grid-cols-2">
+            <TextField
+              label="Ends on (optional)"
+              type="date"
+              error={errors.repeat?.endDate?.message}
+              {...register("repeat.endDate")}
+            />
+            <NativeSelect
+              label="Time zone"
+              options={zones}
+              hint="Each expense is added on its date in this time zone."
+              error={errors.repeat?.timezone?.message}
+              {...register("repeat.timezone")}
+            />
+          </div>
+          {preview ? (
+            <div className="grid gap-1 rounded-lg bg-muted/50 p-3 text-sm" aria-live="polite">
+              <p>{preview.rule}.</p>
+              {preview.dates.length > 0 ? (
+                <p className="text-muted-foreground">
+                  Next: {preview.dates.map((date) => formatExpenseDate(date)).join(", ")}
+                </p>
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                Dates up to today are added when you save; later ones are added automatically on the day.
+              </p>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 }
 

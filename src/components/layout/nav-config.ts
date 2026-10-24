@@ -1,4 +1,4 @@
-import { Activity, HandCoins, LayoutDashboard, type LucideIcon, Settings, UserRound, Users } from "lucide-react";
+import { Activity, HandCoins, LayoutDashboard, type LucideIcon, Repeat, Settings, UserRound, Users } from "lucide-react";
 
 import { ROUTES } from "@/lib/auth/routes";
 
@@ -25,6 +25,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
 /** Secondary pages: the phone menu and the lower part of the sidebar. */
 export const SECONDARY_NAV: readonly NavItem[] = [
   { href: ROUTES.settlements, label: "Settlements", icon: HandCoins, available: true },
+  { href: ROUTES.recurring, label: "Recurring", icon: Repeat, available: true },
   { href: ROUTES.settings, label: "Settings", icon: Settings, available: true },
 ];
 

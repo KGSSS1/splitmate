@@ -1,4 +1,4 @@
-import type { ResolvedExpense } from "./resolve";
+import { type ExpenseFormValues, type ResolvedExpense, resolveExpense } from "./resolve";
 
 /**
  * The jsonb payloads of `create_expense` / `update_expense`, in the shape the
@@ -69,4 +69,26 @@ export function buildExpensePayload(expense: ResolvedExpense): ExpensePayload {
 /** "goa, beach , ,trip" → ["goa", "beach", "trip"] (unique, each 1–40 characters, at most 20). */
 export function parseTags(input: string): string[] {
   return [...new Set(input.split(",").map((tag) => tag.trim()).filter(Boolean))];
+}
+
+/**
+ * Re-resolves the split on the server from what the user entered (never from
+ * amounts computed in the browser) and builds the RPC arguments shared by
+ * expenses and recurring templates. Callers validate `values` with the form
+ * schema first, which has already resolved it once, so this cannot fail.
+ */
+export function expenseRpcArguments(values: ExpenseFormValues) {
+  const result = resolveExpense(values);
+  if (!result.ok) throw new Error("A validated expense failed to resolve.");
+  const { p_items, ...payload } = buildExpensePayload(result.expense);
+  return {
+    ...payload,
+    // Left out for non-itemized splits (the SQL default is null).
+    ...(p_items ? { p_items } : {}),
+    p_description: values.description.trim(),
+    p_expense_date: values.date,
+    p_category: values.category.trim(),
+    p_notes: values.notes.trim(),
+    p_tags: parseTags(values.tags),
+  };
 }

@@ -7,6 +7,8 @@ import { blankExpenseValues } from "@/lib/expenses/form-values";
 
 const actions = vi.hoisted(() => ({ createExpense: vi.fn(), updateExpense: vi.fn() }));
 vi.mock("@/server/actions/expenses", () => actions);
+const recurringActions = vi.hoisted(() => ({ createRecurringExpense: vi.fn(), updateRecurringExpense: vi.fn() }));
+vi.mock("@/server/actions/recurring", () => recurringActions);
 
 const A = "00000000-0000-4000-8000-00000000000a";
 const B = "00000000-0000-4000-8000-00000000000b";
@@ -55,6 +57,8 @@ describe("ExpenseForm", () => {
   beforeEach(() => {
     actions.createExpense.mockReset();
     actions.updateExpense.mockReset();
+    recurringActions.createRecurringExpense.mockReset();
+    recurringActions.updateRecurringExpense.mockReset();
   });
 
   it("blocks saving until the split is valid, then previews each share", async () => {
@@ -240,5 +244,99 @@ describe("ExpenseForm", () => {
     expect(screen.getByRole("checkbox", { name: "Include Asha" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Include Bina" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Include Chetan" })).not.toBeInTheDocument();
+  });
+
+  describe("repeat", () => {
+    it("doesn't repeat by default and saves a plain expense", async () => {
+      actions.createExpense.mockResolvedValue(undefined);
+      const user = renderForm();
+      expect(screen.getByLabelText("Repeat")).toHaveValue("never");
+      expect(screen.queryByLabelText("Time zone")).not.toBeInTheDocument();
+      await user.type(screen.getByLabelText("Description"), "Dinner");
+      await user.type(screen.getByLabelText("Amount"), "900");
+      await user.click(save());
+      await vi.waitFor(() => expect(actions.createExpense).toHaveBeenCalledTimes(1));
+      expect(recurringActions.createRecurringExpense).not.toHaveBeenCalled();
+    });
+
+    it("explains month ends, previews the next dates and saves a recurring expense", async () => {
+      recurringActions.createRecurringExpense.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(
+        <ExpenseForm
+          options={options}
+          mode={{ kind: "create" }}
+          defaultValues={{
+            ...blankExpenseValues({ splitWith: `group:${GROUP}`, userIds: [A, B, C], paidBy: A, currency: "INR", date: "2027-01-31" }),
+            repeat: { frequency: "never", endDate: "", timezone: "Asia/Kolkata" },
+          }}
+        />,
+      );
+      await user.selectOptions(screen.getByLabelText("Repeat"), "Every month");
+      expect(screen.getByLabelText("First date")).toBeInTheDocument();
+      expect(screen.getByLabelText("Time zone")).toHaveValue("Asia/Kolkata");
+      expect(screen.getByText("Every month on the 31st (the last day in shorter months).")).toBeInTheDocument();
+      expect(screen.getByText("Next: 31 Jan 2027, 28 Feb 2027, 31 Mar 2027")).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText("Description"), "Rent");
+      await user.type(screen.getByLabelText("Amount"), "30000");
+      await user.click(screen.getByRole("button", { name: "Save recurring expense" }));
+      await vi.waitFor(() => expect(recurringActions.createRecurringExpense).toHaveBeenCalledTimes(1));
+      const [call] = recurringActions.createRecurringExpense.mock.calls[0] ?? [];
+      expect(call.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+      expect(call.values).toMatchObject({
+        description: "Rent",
+        date: "2027-01-31",
+        repeat: { frequency: "monthly", endDate: "", timezone: "Asia/Kolkata" },
+      });
+      expect(actions.createExpense).not.toHaveBeenCalled();
+    });
+
+    it("refuses an end date before the first date", async () => {
+      const user = renderForm();
+      await user.selectOptions(screen.getByLabelText("Repeat"), "Every week");
+      await user.type(screen.getByLabelText("Description"), "Cleaner");
+      await user.type(screen.getByLabelText("Amount"), "900");
+      await user.type(screen.getByLabelText("Ends on (optional)"), "2026-10-01");
+      await user.click(screen.getByRole("button", { name: "Save recurring expense" }));
+      expect(await screen.findByText("The end date must be on or after the first date.")).toBeInTheDocument();
+      expect(recurringActions.createRecurringExpense).not.toHaveBeenCalled();
+    });
+
+    it("edits a recurring expense with its version and can't turn the repeat off", async () => {
+      recurringActions.updateRecurringExpense.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(
+        <ExpenseForm
+          options={options}
+          mode={{ kind: "edit-recurring", recurringId: GROUP, expectedVersion: 2 }}
+          defaultValues={{
+            ...blankExpenseValues({ splitWith: `group:${GROUP}`, userIds: [A, B, C], paidBy: A, currency: "INR", date: "2026-10-01" }),
+            description: "Rent",
+            amount: "30000",
+            repeat: { frequency: "monthly", endDate: "", timezone: "UTC" },
+          }}
+        />,
+      );
+      expect(screen.getByLabelText("Split with")).toBeDisabled();
+      expect(within(screen.getByLabelText("Repeat")).queryByRole("option", { name: "Doesn't repeat" })).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await vi.waitFor(() =>
+        expect(recurringActions.updateRecurringExpense).toHaveBeenCalledWith(
+          expect.objectContaining({ recurringId: GROUP, expectedVersion: 2 }),
+        ),
+      );
+    });
+
+    it("editing a single expense offers no repeat", () => {
+      render(
+        <ExpenseForm
+          options={options}
+          mode={{ kind: "edit", expenseId: GROUP, expectedVersion: 1 }}
+          defaultValues={blankExpenseValues({ splitWith: `group:${GROUP}`, userIds: [A, B, C], paidBy: A, currency: "INR", date: "2026-10-21" })}
+        />,
+      );
+      expect(screen.queryByLabelText("Repeat")).not.toBeInTheDocument();
+    });
   });
 });

@@ -28,6 +28,7 @@ SplitMate is an original expense-sharing web app (inspired by Splitwise's core f
 | Start local Supabase | `npm run db:start` (stop: `npm run db:stop`) |
 | Reset local DB (migrations + seed) | `npm run db:reset` |
 | Generate DB types | `npm run db:types` → `src/types/database.types.ts` |
+| Run the recurring-expense generator now (local) | `npm run db:recurring` |
 
 Local Supabase needs Docker. `.env.local` values come from `npx supabase status`.
 

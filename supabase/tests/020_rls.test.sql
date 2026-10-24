@@ -20,6 +20,8 @@ select public.create_expense(tests.uid('rls-d1'), null, 'Taxi', 20000, 'INR', cu
                              tests.amounts('alice', '20000'), tests.amounts('alice', '10000', 'erin', '10000'),
                              tests.debts('erin', 'alice', '10000'));
 select public.create_invitation(tests.group_id('RLS group'));
+insert into storage.objects (bucket_id, name, owner_id)
+values ('receipts', tests.expense_id('rls-e1') || '/receipt.jpg', tests.uid('alice'));
 insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes)
 values (tests.expense_id('rls-e1'), tests.uid('alice'), tests.expense_id('rls-e1') || '/receipt.jpg', 'image/jpeg', 1000);
 select tests.authenticate_as('bob');
@@ -46,7 +48,8 @@ with item as (
 insert into public.expense_item_assignments (item_id, user_id)
 select item.id, u from item, unnest(array[tests.uid('alice'), tests.uid('erin')]) as u;
 insert into public.recurring_occurrences (recurring_expense_id, occurrence_date, status)
-select id, current_date, 'skipped' from public.recurring_expenses where description = 'Rent';
+select id, current_date, 'skipped' from public.recurring_expenses
+ where description = 'Rent' and group_id = tests.group_id('RLS group');
 -- A group settlement between Alice and Bob after Carol left (pending: no ledger effect).
 select tests.authenticate_as('bob');
 select public.create_settlement(tests.uid('rls-s2'), tests.group_id('RLS group'),

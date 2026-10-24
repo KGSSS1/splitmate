@@ -25,14 +25,14 @@ export type Database = {
           Tables: {
             "attachments": {
                   Row: {
-                    "created_at": string,"expense_id": string,"id": string,"mime_type": string,"size_bytes": number,"storage_path": string,"uploaded_by": string
+                    "created_at": string,"expense_id": string,"file_name": string | null,"id": string,"mime_type": string,"size_bytes": number,"storage_path": string,"uploaded_by": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"expense_id": string,"id"?: string,"mime_type": string,"size_bytes": number,"storage_path": string,"uploaded_by": string
+                    "created_at"?: string,"expense_id": string,"file_name"?: string | null,"id"?: string,"mime_type": string,"size_bytes": number,"storage_path": string,"uploaded_by": string
                   }
                   Update: {
-                    "created_at"?: string,"expense_id"?: string,"id"?: string,"mime_type"?: string,"size_bytes"?: number,"storage_path"?: string,"uploaded_by"?: string
+                    "created_at"?: string,"expense_id"?: string,"file_name"?: string | null,"id"?: string,"mime_type"?: string,"size_bytes"?: number,"storage_path"?: string,"uploaded_by"?: string
                   }
                   Relationships: [
                     {
@@ -491,14 +491,14 @@ isOneToOne: false
                   ]
                 },"recurring_expenses": {
                   Row: {
-                    "amount": number,"category": string | null,"created_at": string,"created_by": string,"currency": string,"description": string,"end_date": string | null,"frequency": string,"group_id": string | null,"id": string,"ledger_entries": NonNullable<Json>,"next_occurrence_date": string | null,"payers": NonNullable<Json>,"shares": NonNullable<Json>,"split_method": string,"start_date": string,"status": string,"timezone": string,"updated_at": string,"version": number
+                    "amount": number,"category": string | null,"created_at": string,"created_by": string,"currency": string,"description": string,"end_date": string | null,"frequency": string,"group_id": string | null,"id": string,"idempotency_key": string | null,"items": Json | null,"ledger_entries": NonNullable<Json>,"next_occurrence_date": string | null,"notes": string | null,"payers": NonNullable<Json>,"shares": NonNullable<Json>,"split_method": string,"start_date": string,"status": string,"tags": (string)[],"timezone": string,"updated_at": string,"updated_by": string | null,"version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount": number,"category"?: string | null,"created_at"?: string,"created_by": string,"currency": string,"description": string,"end_date"?: string | null,"frequency": string,"group_id"?: string | null,"id"?: string,"ledger_entries": NonNullable<Json>,"next_occurrence_date"?: string | null,"payers": NonNullable<Json>,"shares": NonNullable<Json>,"split_method": string,"start_date": string,"status"?: string,"timezone"?: string,"updated_at"?: string,"version"?: number
+                    "amount": number,"category"?: string | null,"created_at"?: string,"created_by": string,"currency": string,"description": string,"end_date"?: string | null,"frequency": string,"group_id"?: string | null,"id"?: string,"idempotency_key"?: string | null,"items"?: Json | null,"ledger_entries": NonNullable<Json>,"next_occurrence_date"?: string | null,"notes"?: string | null,"payers": NonNullable<Json>,"shares": NonNullable<Json>,"split_method": string,"start_date": string,"status"?: string,"tags"?: (string)[],"timezone"?: string,"updated_at"?: string,"updated_by"?: string | null,"version"?: number
                   }
                   Update: {
-                    "amount"?: number,"category"?: string | null,"created_at"?: string,"created_by"?: string,"currency"?: string,"description"?: string,"end_date"?: string | null,"frequency"?: string,"group_id"?: string | null,"id"?: string,"ledger_entries"?: NonNullable<Json>,"next_occurrence_date"?: string | null,"payers"?: NonNullable<Json>,"shares"?: NonNullable<Json>,"split_method"?: string,"start_date"?: string,"status"?: string,"timezone"?: string,"updated_at"?: string,"version"?: number
+                    "amount"?: number,"category"?: string | null,"created_at"?: string,"created_by"?: string,"currency"?: string,"description"?: string,"end_date"?: string | null,"frequency"?: string,"group_id"?: string | null,"id"?: string,"idempotency_key"?: string | null,"items"?: Json | null,"ledger_entries"?: NonNullable<Json>,"next_occurrence_date"?: string | null,"notes"?: string | null,"payers"?: NonNullable<Json>,"shares"?: NonNullable<Json>,"split_method"?: string,"start_date"?: string,"status"?: string,"tags"?: (string)[],"timezone"?: string,"updated_at"?: string,"updated_by"?: string | null,"version"?: number
                   }
                   Relationships: [
                     {
@@ -512,6 +512,12 @@ isOneToOne: false
       columns: ["group_id"]
 isOneToOne: false
       referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recurring_expenses_updated_by_fkey"
+      columns: ["updated_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
       referencedColumns: ["id"]
     }
                   ]
@@ -617,6 +623,9 @@ isOneToOne: false
               "invitation_id": string,"token": string
             }[]
                            },
+"create_recurring_expense":
+{ Args: { "p_amount": number,"p_category"?: string,"p_currency": string,"p_description": string,"p_end_date"?: string,"p_frequency": string,"p_group_id": string,"p_idempotency_key": string,"p_items"?: Json,"p_ledger_entries": Json,"p_notes"?: string,"p_participants": Json,"p_payers": Json,"p_split_method": string,"p_start_date": string,"p_tags"?: (string)[],"p_timezone"?: string }; Returns: string
+                           },
 "create_settlement":
 { Args: { "p_amount": number,"p_currency": string,"p_group_id": string,"p_idempotency_key": string,"p_method"?: string,"p_note"?: string,"p_payer_id": string,"p_receiver_id": string,"p_settled_on"?: string,"p_upi_reference"?: string }; Returns: string
                            },
@@ -713,6 +722,9 @@ isOneToOne: false
 "set_member_role":
 { Args: { "p_group_id": string,"p_role": string,"p_user_id": string }; Returns: undefined
                            },
+"set_recurring_expense_status":
+{ Args: { "p_recurring_id": string,"p_status": string }; Returns: undefined
+                           },
 "settle_up_with_friend":
 { Args: { "p_friend_id": string,"p_idempotency_key": string,"p_items": Json,"p_method"?: string,"p_note"?: string,"p_settled_on"?: string,"p_upi_reference"?: string }; Returns: (string)[]
                            },
@@ -721,6 +733,9 @@ isOneToOne: false
                            },
 "update_group":
 { Args: { "p_default_currency": string,"p_description": string,"p_group_id": string,"p_group_type": string,"p_name": string,"p_simplify_debts": boolean }; Returns: undefined
+                           },
+"update_recurring_expense":
+{ Args: { "p_amount": number,"p_category"?: string,"p_currency": string,"p_description": string,"p_end_date"?: string,"p_expected_version": number,"p_frequency": string,"p_items"?: Json,"p_ledger_entries": Json,"p_notes"?: string,"p_participants": Json,"p_payers": Json,"p_recurring_id": string,"p_split_method": string,"p_start_date": string,"p_tags"?: (string)[],"p_timezone"?: string }; Returns: number
                            },
 "withdraw_friend_request":
 { Args: { "p_request_id": string }; Returns: undefined

@@ -19,6 +19,7 @@ export const ROUTES = {
   activity: "/activity",
   settlements: "/settlements",
   settleUp: "/settle-up",
+  recurring: "/recurring",
 } as const;
 
 /**

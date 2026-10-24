@@ -9,15 +9,20 @@ import { createGroup, createInviteLink, joinThroughInvite, NAVIGATION, newMember
 
 const EXPENSE_URL = /\/expenses\/([0-9a-f-]{36})\?saved=created$/;
 const SETTLEMENT_URL = /\/settlements\/([0-9a-f-]{36})\?saved=paid$/;
+const RECURRING_URL = /\/recurring\/([0-9a-f-]{36})\?saved=created$/;
 
 interface World {
   groupId: string;
   expenseId: string;
   settlementId: string;
   binaId: string;
+  recurringId: string;
 }
 
-/** Asha and Bina share a group with one expense and one pending repayment from Bina. */
+/**
+ * Asha and Bina share a group with one expense (with a receipt), one pending
+ * repayment from Bina and a monthly recurring expense.
+ */
 async function buildWorld(page: Page, browser: Browser): Promise<{ world: World; binaPage: Page }> {
   const [asha, bina] = ["Asha", "Bina"].map(uniqueName) as [string, string];
   await newMember(page, asha);
@@ -32,6 +37,20 @@ async function buildWorld(page: Page, browser: Browser): Promise<{ world: World;
   await page.getByRole("button", { name: "Save expense" }).click();
   await expect(page).toHaveURL(EXPENSE_URL, NAVIGATION);
   const expenseId = EXPENSE_URL.exec(page.url())?.[1] ?? "";
+  await page.getByLabel("Add receipt").setInputFiles({
+    name: "dinner.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n%%EOF\n"),
+  });
+  await expect(page.getByRole("list", { name: "Receipts" }).getByRole("listitem")).toHaveCount(1, NAVIGATION);
+
+  await page.goto(`/expenses/new?group=${groupId}&repeat=monthly`);
+  await expect(field(page, "Split with")).toHaveValue(`group:${groupId}`, NAVIGATION);
+  await field(page, "Description").fill("Rent");
+  await field(page, "Amount").fill("1000");
+  await page.getByRole("button", { name: "Save recurring expense" }).click();
+  await expect(page).toHaveURL(RECURRING_URL, NAVIGATION);
+  const recurringId = RECURRING_URL.exec(page.url())?.[1] ?? "";
 
   await binaPage.goto(`/settle-up?group=${groupId}`);
   await field(binaPage, "Settled with").selectOption({ label: asha });
@@ -42,10 +61,10 @@ async function buildWorld(page: Page, browser: Browser): Promise<{ world: World;
 
   await page.goto("/friends");
   const binaHref = await page.getByRole("link", { name: new RegExp(bina) }).getAttribute("href");
-  return { world: { groupId, expenseId, settlementId, binaId: binaHref?.split("/").pop() ?? "" }, binaPage };
+  return { world: { groupId, expenseId, settlementId, binaId: binaHref?.split("/").pop() ?? "", recurringId }, binaPage };
 }
 
-function appPages({ groupId, expenseId, settlementId, binaId }: World) {
+function appPages({ groupId, expenseId, settlementId, binaId, recurringId }: World) {
   return [
     "/dashboard",
     "/groups",
@@ -62,6 +81,10 @@ function appPages({ groupId, expenseId, settlementId, binaId }: World) {
     "/expenses/new",
     `/expenses/${expenseId}`,
     `/expenses/${expenseId}/edit`,
+    "/expenses/new?repeat=monthly",
+    "/recurring",
+    `/recurring/${recurringId}`,
+    `/recurring/${recurringId}/edit`,
     "/settings",
     // An app URL that doesn't exist (L29: the not-found page inside the app shell).
     "/groups/not-a-group/balances",
@@ -101,12 +124,15 @@ test("app pages pass axe in light and dark themes", async ({ page, browser }) =>
 });
 
 test("list rows show where keyboard focus is", async ({ page, browser }) => {
+  // buildWorld alone signs up two people and saves four things.
+  test.setTimeout(120_000);
   const { world, binaPage } = await buildWorld(page, browser);
   const rows: [string, string][] = [
     ["/groups", `a[href="/groups/${world.groupId}"]`],
     [`/groups/${world.groupId}`, `a[href="/expenses/${world.expenseId}"]`],
     ["/friends", `a[href="/friends/${world.binaId}"]`],
     ["/settlements", `a[href="/settlements/${world.settlementId}"]`],
+    ["/recurring", `a[href="/recurring/${world.recurringId}"]`],
     ["/activity", 'main li a[href^="/"]'],
     ["/dashboard", `main a[href="/friends/${world.binaId}"]`],
   ];
@@ -132,12 +158,22 @@ test("list rows show where keyboard focus is", async ({ page, browser }) => {
 
 test("touch targets are at least 44 px on phones", async ({ page, browser, isMobile }) => {
   test.skip(!isMobile, "phones only");
+  test.setTimeout(120_000);
   const { world, binaPage } = await buildWorld(page, browser);
   const small: string[] = [];
-  for (const path of ["/dashboard", "/settings", "/expenses/new", `/groups/${world.groupId}/settings`, `/settlements/${world.settlementId}`]) {
+  for (const path of [
+    "/dashboard",
+    "/settings",
+    "/expenses/new",
+    "/expenses/new?repeat=monthly",
+    `/expenses/${world.expenseId}`,
+    `/recurring/${world.recurringId}`,
+    `/groups/${world.groupId}/settings`,
+    `/settlements/${world.settlementId}`,
+  ]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible(NAVIGATION);
-    if (path === "/expenses/new") await page.getByText("Notes and tags").scrollIntoViewIfNeeded();
+    if (path.startsWith("/expenses/new")) await page.getByText("Notes and tags").scrollIntoViewIfNeeded();
     const found = await page.evaluate(() => {
       // Buttons, links outside running text, disclosure summaries and radio pills.
       const targets = [

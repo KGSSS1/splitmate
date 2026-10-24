@@ -16,7 +16,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
-    "db:types": "supabase gen types typescript --local > src/types/database.types.ts"
+    "db:types": "supabase gen types typescript --local > src/types/database.types.ts",
+    "db:recurring": "docker exec supabase_db_splitmate psql -U postgres -d postgres -Atc \"select private.generate_recurring_expenses() as created\""
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

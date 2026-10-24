@@ -3,8 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { buildExpensePayload, parseTags } from "@/lib/expenses/payload";
-import { type ExpenseFormValues, resolveExpense } from "@/lib/expenses/resolve";
+import { expenseRpcArguments as rpcArguments } from "@/lib/expenses/payload";
 import { createClient } from "@/lib/supabase/server";
 import {
   addCommentSchema,
@@ -18,27 +17,6 @@ import { type ActionResult, invalidInput, rpcFailure } from "@/server/action-res
 import { requireOnboardedProfile } from "@/server/auth";
 
 const EXPENSES = "/expenses";
-
-/**
- * Re-resolves the split on the server from what the user entered (never from
- * amounts computed in the browser) and builds the RPC arguments shared by
- * create and update. The schema has already resolved it once, so this cannot fail.
- */
-function rpcArguments(values: ExpenseFormValues) {
-  const result = resolveExpense(values);
-  if (!result.ok) throw new Error("A validated expense failed to resolve.");
-  const { p_items, ...payload } = buildExpensePayload(result.expense);
-  return {
-    ...payload,
-    // Left out for non-itemized splits (the SQL default is null).
-    ...(p_items ? { p_items } : {}),
-    p_description: values.description.trim(),
-    p_expense_date: values.date,
-    p_category: values.category.trim(),
-    p_notes: values.notes.trim(),
-    p_tags: parseTags(values.tags),
-  };
-}
 
 /**
  * Creates a group or direct expense. The idempotency key comes from the form

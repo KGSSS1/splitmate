@@ -24,3 +24,16 @@ commit;
     child.stdin.end(script);
   });
 }
+
+/** Runs SQL as `postgres` on the LOCAL database container (e.g. the recurring generator). */
+export function psqlAdmin(sql: string): Promise<{ code: number | null; output: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("docker", ["exec", "-i", "supabase_db_splitmate", "psql", "-X", "-q", "-At", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres"]);
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, output }));
+    child.stdin.end(sql);
+  });
+}

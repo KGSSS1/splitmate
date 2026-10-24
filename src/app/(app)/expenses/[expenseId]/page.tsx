@@ -1,9 +1,10 @@
-import { ArrowLeft, Copy, Pencil } from "lucide-react";
+import { ArrowLeft, Copy, FileText, Image as ImageIcon, Pencil, Repeat } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CommentForm } from "@/components/expenses/comment-form";
+import { ReceiptUploader } from "@/components/expenses/receipt-uploader";
 import { RedirectNotice } from "@/components/forms/redirect-notice";
 import { ActionButton } from "@/components/shared/action-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -13,12 +14,16 @@ import { formatExpenseDate, formatTimestamp } from "@/lib/expenses/dates";
 import { ADJUSTMENT_LABELS, type AdjustmentKind, categoryLabel, isSplitMethod, SPLIT_METHOD_LABELS } from "@/lib/expenses/options";
 import { formatBasisPoints } from "@/lib/expenses/percent";
 import { formatMoney } from "@/lib/money/format";
+import { formatFileSize, MAX_RECEIPTS_PER_EXPENSE, RECEIPT_TYPE_LABELS } from "@/lib/receipts/files";
 import { cn } from "@/lib/utils";
 import { uuidSchema } from "@/lib/validation/groups";
 import { cancelExpense, deleteComment } from "@/server/actions/expenses";
+import { deleteReceipt } from "@/server/actions/receipts";
 import { requireOnboardedProfile } from "@/server/auth";
 import { type ExpenseDetail, getExpense } from "@/server/expenses";
 import { nameOf } from "@/server/people";
+import { listReceipts, type Receipt } from "@/server/receipts";
+import { getExpenseRecurringSource } from "@/server/recurring";
 
 export const metadata: Metadata = { title: "Expense" };
 
@@ -33,6 +38,7 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
   if (!uuidSchema.safeParse(expenseId).success) notFound();
   const expense = await getExpense(expenseId);
   if (!expense) notFound();
+  const [receipts, recurringSource] = await Promise.all([listReceipts(expenseId), getExpenseRecurringSource(expenseId)]);
 
   const name = (id: string) => (id === profile.id ? "You" : nameOf(expense.people, id));
   const format = (amount: number) => formatMoney(amount, expense.currency);
@@ -70,6 +76,18 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
           {expense.category ? ` · ${categoryLabel(expense.category)}` : ""} · {expense.groupId ? expense.groupName : "Direct expense"}
           {expense.version > 1 ? ` · Version ${expense.version}` : ""}
         </p>
+        {recurringSource ? (
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Repeat aria-hidden className="size-4" />
+            Added automatically by{" "}
+            <Link
+              href={`${ROUTES.recurring}/${recurringSource.id}`}
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              a recurring expense
+            </Link>
+          </p>
+        ) : null}
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -151,6 +169,14 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
         </Card>
       ) : null}
 
+      <ReceiptsSection
+        expenseId={expense.id}
+        receipts={receipts}
+        viewerId={profile.id}
+        canAdd={expense.canComment}
+        name={name}
+      />
+
       <section aria-labelledby="history-heading" className="grid gap-3">
         <h2 id="history-heading" className="text-lg font-semibold">
           History
@@ -209,6 +235,69 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
         {expense.canComment ? <CommentForm expenseId={expense.id} /> : null}
       </section>
     </div>
+  );
+}
+
+/** Receipts (SPEC §8): opened through a route that issues a fresh signed URL each time. */
+function ReceiptsSection({
+  expenseId,
+  receipts,
+  viewerId,
+  canAdd,
+  name,
+}: {
+  expenseId: string;
+  receipts: Receipt[];
+  viewerId: string;
+  canAdd: boolean;
+  name: (id: string) => string;
+}) {
+  return (
+    <section aria-labelledby="receipts-heading" className="grid gap-3">
+      <h2 id="receipts-heading" className="text-lg font-semibold">
+        Receipts
+      </h2>
+      {receipts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No receipts yet.</p>
+      ) : (
+        <ul className="grid gap-2" aria-label="Receipts">
+          {receipts.map((receipt) => {
+            const Icon = receipt.type === "application/pdf" ? FileText : ImageIcon;
+            return (
+              <li key={receipt.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+                <a
+                  href={`${ROUTES.expenses}/${expenseId}/receipts/${receipt.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-11 min-w-0 items-center gap-2 underline-offset-2 hover:underline md:min-h-0"
+                >
+                  <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="grid min-w-0">
+                    <span className="truncate font-medium">{receipt.fileName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {RECEIPT_TYPE_LABELS[receipt.type]} · {formatFileSize(receipt.sizeBytes)} · Added by{" "}
+                      {receipt.uploadedBy === viewerId ? "you" : name(receipt.uploadedBy)}
+                      <span className="sr-only"> (opens in a new tab)</span>
+                    </span>
+                  </span>
+                </a>
+                {receipt.uploadedBy === viewerId && canAdd ? (
+                  <ActionButton
+                    variant="ghost"
+                    confirm="Remove this receipt?"
+                    confirmLabel="Remove"
+                    action={deleteReceipt.bind(null, { attachmentId: receipt.id })}
+                  >
+                    Remove
+                  </ActionButton>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {canAdd && receipts.length < MAX_RECEIPTS_PER_EXPENSE ? <ReceiptUploader expenseId={expenseId} /> : null}
+    </section>
   );
 }
 

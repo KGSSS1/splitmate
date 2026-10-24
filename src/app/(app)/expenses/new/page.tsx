@@ -8,8 +8,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
 import { todayIn } from "@/lib/expenses/dates";
 import { blankExpenseValues, storedToFormValues } from "@/lib/expenses/form-values";
+import { isFrequency } from "@/lib/recurring/schedule";
 import { cn } from "@/lib/utils";
 import { uuidSchema } from "@/lib/validation/groups";
+import { noRepeat } from "@/lib/validation/recurring";
 import { requireOnboardedProfile } from "@/server/auth";
 import { type ExpenseFormOptions, getExpense, getExpenseFormOptions } from "@/server/expenses";
 
@@ -31,7 +33,8 @@ function chooseSplitWith(options: ExpenseFormOptions, group?: string, friend?: s
 
 /**
  * New expense. `?group=` or `?friend=` preselects where it goes; `?from=`
- * duplicates an existing expense (dated today, saved as a new expense).
+ * duplicates an existing expense (dated today, saved as a new expense);
+ * `?repeat=monthly` (or daily, weekly, yearly) starts a recurring one.
  */
 export default async function NewExpensePage({ searchParams }: PageProps<"/expenses/new">) {
   const [query, profile] = await Promise.all([searchParams, requireOnboardedProfile()]);
@@ -93,6 +96,9 @@ export default async function NewExpensePage({ searchParams }: PageProps<"/expen
           date: today,
         });
 
+  const repeatParam = Array.isArray(query.repeat) ? query.repeat[0] : query.repeat;
+  const repeat = { ...noRepeat(profile.timezone), ...(isFrequency(repeatParam) ? { frequency: repeatParam } : {}) };
+
   return (
     <div className="grid max-w-5xl gap-6">
       <header className="grid gap-1">
@@ -105,7 +111,7 @@ export default async function NewExpensePage({ searchParams }: PageProps<"/expen
             : "Shares are worked out as you type. Nothing is saved until you press Save."}
         </p>
       </header>
-      <ExpenseForm options={options} defaultValues={defaultValues} mode={{ kind: "create" }} />
+      <ExpenseForm options={options} defaultValues={{ ...defaultValues, repeat }} mode={{ kind: "create" }} />
     </div>
   );
 }

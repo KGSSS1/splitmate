@@ -2,6 +2,59 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-24: M7 Recurring expenses and receipts complete (staging push pending approval)
+
+- **Migration** `20261024090000_recurring_receipts.sql`:
+  - `recurring_expenses` gains `updated_by`, `idempotency_key` (unique per creator), `notes`, `tags`, `items` and an `ended` status. New notification type `recurring_failed`.
+  - Schedule: `private.recurring_date` / `recurring_next_date` count from the start date (31st → last day of shorter months → 31st again; 29 Feb → 28 Feb in common years).
+  - `private.validate_expense_payload` checks a template's stored payload by writing it as an expense inside an always-rolled-back block, so templates get exactly the `create_expense` checks without a second copy of them.
+  - RPCs `create_recurring_expense`, `update_recurring_expense` (future occurrences only; returns the same version on a no-op save) and `set_recurring_expense_status` (pause / resume / cancel). Resuming skips the dates that passed while paused. All audited.
+  - Generator `private.generate_recurring_expenses(p_now, p_recurring_id)`: due = on or before today in the template's time zone; catches up (≤ 100 per template per run); occurrence row first (unique `(template, date)`), then the expense as the template's creator with a deterministic idempotency key. A failure is recorded on the occurrence, pauses the template and notifies its creator.
+  - `pg_cron` job `splitmate-recurring-expenses`, **hourly** (`5 * * * *`). SPEC §12 says daily; hourly means each template is added soon after midnight in its own time zone, and re-runs are harmless. Say if you'd rather have daily.
+  - Receipts: `attachments.file_name`; a trigger allows at most 10 per expense and requires the row to point at an object the uploader owns.
+- **App:**
+  - The Add expense form has a **Repeat** section (frequency, "Ends on", time zone defaulting to the profile's), with the rule in words and the next three dates. `?repeat=monthly` preselects it.
+  - Pages `/recurring` (in the secondary nav), `/recurring/[id]` (schedule, split, expenses added and failed dates, Pause/Resume/Cancel) and `/recurring/[id]/edit` (the same form, mode `edit-recurring`).
+  - Generated expenses link back to their template.
+  - **Receipts** on the expense page:
+    - A Server Action creates a signed upload URL, which runs the bucket's insert policy as the caller.
+    - The browser shrinks photos (≤ 2000 px, WebP or JPEG) and PUTs the file straight to Storage. Vercel caps request bodies below 5 MB, so files don't go through the app server.
+    - A second action downloads the file and checks its magic bytes, the type it is served with and its size. Only then does it insert the row; otherwise it deletes the file.
+    - Files open through `/expenses/[id]/receipts/[attachmentId]`, which re-checks access and redirects to a 60 s signed URL. The uploader can remove their own.
+  - New modules:
+    - `src/lib/recurring/schedule.ts`;
+    - `src/lib/receipts/{files,compress}.ts`;
+    - `src/lib/validation/{recurring,receipts}.ts`;
+    - `src/server/{recurring,receipts}.ts`;
+    - `src/server/actions/{recurring,receipts}.ts`.
+  - `expenseRpcArguments` moved from the expense actions to `src/lib/expenses/payload.ts` (shared with templates). The expense schema exports `baseExpenseSchema` and `refineExpense`.
+- **npm script:** `npm run db:recurring` runs the generator once via `docker exec supabase_db_splitmate psql` and prints how many expenses it created. Running it twice in a row printed `0` both times locally (nothing was due).
+- **Tests:**
+  - pgTAP `160_recurring_receipts` (80): month ends, 29 Feb and schedule arithmetic, generator run repeatedly (each occurrence once), catch-up, time zones, end dates, create/edit/pause/resume/cancel checks with exact messages, failed occurrences, the cron job, receipt limit and ownership, non-members denied. `020` and `070` fixtures now upload the object before attaching it (new trigger). `020` selects its own template only, since the integration suite leaves committed data behind.
+  - Unit (+40):
+    - schedule (including a property test against the same cases);
+    - receipt sniffing, names and sizes;
+    - five repeat tests in the expense form;
+    - 18 action tests (`tests/unit/server/recurring-receipt-actions.test.ts`).
+  - Integration `recurring-receipts` (2):
+    - an RPC template, the generator run twice with exactly one expense, outsider SM404;
+    - a real signed upload, opening by a member, and an outsider denied through download, signed URL, signed upload and list.
+  - E2E `recurring-receipts.spec.ts` (2 × 2 viewports): monthly expense saved from the form, today's expense in balances, pause/resume, edit for the future (the first expense keeps ₹20,000), outsider 404, cancel; PDF and PNG receipts, a fake PDF refused, a member opening it via the redirect, outsider 404, remove.
+  - The axe spec covers `/recurring`, `/recurring/[id]`, `/recurring/[id]/edit`, `/expenses/new?repeat=monthly` and an expense with a receipt. The focus and touch-target tests got 120 s timeouts (their setup now does more).
+- **Checks:**
+  - `db reset` from scratch ✓ (19 migrations); types regenerated; lint, typecheck and build ✓; `db lint` and advisors ✓ (no issues).
+  - Unit 547 ✓. Integration 27 ✓. pgTAP 556 ✓.
+  - Playwright 48 passed, 2 skipped (phone-only tests on desktop) with `--workers=2`.
+  - The first pgTAP run in the full sequence failed in `020` because of the integration test's leftover "Rent" template (fixed as above). The rerun passed.
+- **Known limitations:**
+  - Receipts are added from the expense page only, not inside the Add expense form.
+  - An upload abandoned between the PUT and the attach step leaves an orphan object with no row; nothing cleans those up yet.
+  - Notifications (`recurring_created`, `recurring_failed`) are written but have no UI until M8.
+  - Itemized templates go through the same validation, but no test covers one specifically.
+  - If the template's creator leaves the group, its future occurrences fail and pause it. Another member can't take it over.
+- **Staging:** not pushed. The migration creates the `pg_cron` extension and job on the hosted project when pushed, so it needs your approval (dry run first).
+- **Next:** with approval, push M7 to staging; then M8 (notifications, search, analytics, exports).
+
 ### 2026-10-24: Review follow-ups, batch 3 (polish and accessibility)
 
 - **Fixed:** M7, M8, M11, L3, L16, L17, L18, L19, L20, L22, L24, L26, L27, L28, L29, L32. The table is in `docs/reviews/review-M6.md` under "Batch 3".
@@ -450,12 +503,13 @@
 - [x] E2E steps 4–9 pass
 - [ ] Staging deploy of the MVP — **needs approval**
 
-### M7 — Recurring expenses and receipts
-- [ ] Recurring templates (frequency, dates, timezone, resolved shares); pause/resume/cancel
-- [ ] Month-end handling; idempotent `recurring_occurrences`
-- [ ] `pg_cron` generator + npm script to run it manually
-- [ ] Receipt upload (type sniffing, 5 MB, client compression), signed URLs
-- [ ] Generator twice → each occurrence once; non-members denied receipts
+### M7 — Recurring expenses and receipts (staging push pending approval)
+- [x] Recurring templates (frequency, dates, timezone, resolved shares); pause/resume/cancel; edit applies to future occurrences only
+- [x] Month-end handling; idempotent `recurring_occurrences`
+- [x] `pg_cron` generator + npm script to run it manually (`npm run db:recurring`)
+- [x] Receipt upload (type sniffing, 5 MB, client compression), signed URLs
+- [x] Generator twice → each occurrence once; non-members denied receipts
+- [ ] Push the M7 migration and branch to staging — **needs approval**
 
 ### M8 — Notifications, search, analytics, exports
 - [ ] In-app notifications created inside DB functions; unread count, mark read, preferences

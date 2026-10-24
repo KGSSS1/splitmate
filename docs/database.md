@@ -14,6 +14,7 @@ Docker must be running.
 | Regenerate TypeScript types after a migration | `npm run db:types` → `src/types/database.types.ts` |
 | Lint functions (plpgsql_check) | `npx supabase db lint --local --level warning` |
 | Security and performance advisors | `npx supabase db advisors --local --type all --level warn` |
+| Run the recurring-expense generator now | `npm run db:recurring` (prints how many expenses it created) |
 | Stop the stack | `npm run db:stop` |
 
 `db:reset` only touches the local database. Never run `supabase db reset --linked` or `supabase db push` without explicit approval (see `CLAUDE.md`).
@@ -118,7 +119,22 @@ All of them only sum ledger rows and run with the caller's rights, so RLS applie
   - Read: anyone who can see the expense.
   - Upload: anyone who can edit it (current group members, or the two friends of a direct expense), with `owner_id` equal to the uploader.
   - Delete: only the uploader.
-- Files are served with short-lived signed URLs (M7).
+- **Upload flow (M7):**
+  1. A Server Action creates a signed upload URL for `{expense_id}/{uuid}.{ext}`. Storage runs the upload policy as the caller first, so outsiders get none.
+  2. The browser shrinks photos (longest side 2000 px, WebP or JPEG) and uploads straight to Storage. Vercel caps request bodies below 5 MB, so files never pass through the app server.
+  3. A second Server Action downloads the object, checks its type from its first bytes (and that it is served with that type) and its size, and inserts the `attachments` row. A file that fails is deleted.
+- **`attachments` trigger:** at most 10 receipts per expense (SM422), and a row must point at an object the uploader owns ("Upload the file before attaching it").
+- **Reading:** `/expenses/{id}/receipts/{attachment_id}` re-checks access through RLS and redirects to a signed URL valid for 60 seconds.
+
+### Recurring expenses (M7)
+
+- **Templates** (`recurring_expenses`) store the resolved payers, shares, items and pairwise entries computed by `src/lib/accounting`, in the same jsonb shapes as `create_expense`. `private.validate_expense_payload` checks them by writing them as an expense inside a block that is always rolled back, so templates get exactly the expense checks.
+- **Schedule:** the n-th date is the start date plus n days, weeks, months or years, counted from the start (`private.recurring_date`). A monthly 31st falls on the last day of shorter months and comes back to the 31st; 29 February yearly falls on 28 February in common years. `src/lib/recurring/schedule.ts` mirrors it for previews; both are tested with the same cases.
+- **Generator:** `private.generate_recurring_expenses(p_now default now(), p_recurring_id default null)` creates every due occurrence, meaning on or before today in the template's time zone, and catches up missed ones (at most 100 per template per run). For each date it inserts a `recurring_occurrences` row (unique `(recurring_expense_id, occurrence_date)`) and then the expense, as the template's creator, with idempotency key `md5(template:date)`. Re-running it creates nothing new.
+  - If an occurrence can't be created (someone left the group, the friends are no longer friends, the creator deleted their account), the occurrence is recorded as `failed` with the reason, the template is paused and its creator gets a `recurring_failed` notification.
+  - Each created expense notifies its people (`recurring_created`) and is audited like any expense, with `recurring_expense_id` in the snapshot.
+- **Scheduling:** `pg_cron` job `splitmate-recurring-expenses` runs the generator hourly (`5 * * * *`), so a template is added soon after midnight in its own time zone. Locally nothing runs unless the stack is up; use `npm run db:recurring` (it runs the function through `docker exec … psql`).
+- **Statuses:** `active`, `paused` (resuming skips the dates that passed while paused), `ended` (no dates left before the end date) and `cancelled` (final; expenses already added stay).
 
 ## RPC functions
 
@@ -141,6 +157,9 @@ All functions require a signed-in user. Payloads use minor units, and the shares
 | `create_expense(idempotency_key, group_id \| null, …, payers, participants, ledger_entries, items?)` | Group expense among current members, or a direct expense between two friends |
 | `update_expense(expense_id, expected_version, …)` | Version check; reverses the current version and writes the next one; returns the new version |
 | `cancel_expense(expense_id, expected_version)` | Reversals only |
+| `create_recurring_expense(idempotency_key, group_id \| null, description, amount, currency, split_method, payers, participants, ledger_entries, frequency, start_date, end_date?, timezone?, items?, category?, notes?, tags?)` | A template with the expense checks; the first date may be up to 31 days back or a year ahead (in its time zone). Anything due is created at once. A retry with the same key returns the same template |
+| `update_recurring_expense(recurring_id, expected_version, …)` | Any current group member (or either friend). Applies to future occurrences only; the schedule continues after the last date already created. Returns the new version, or the same one when nothing changed |
+| `set_recurring_expense_status(recurring_id, status)` | `paused`, `active` (resume) or `cancelled`. Audited |
 | `create_settlement(idempotency_key, group_id \| null, payer_id, receiver_id, amount, currency, …)` | Completed if the receiver records it, pending if the payer does |
 | `confirm_settlement` / `reject_settlement(settlement_id)` | Receiver only, while pending |
 | `cancel_settlement(settlement_id)` | Payer withdraws a pending settlement (status `withdrawn`, no ledger effect); either party cancels a completed one (status `cancelled`, reversal). Leaving a group withdraws the leaver's pending settlements there |
@@ -186,5 +205,6 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `130_review_m6` | Review M6 Highs: a removed member can't rejoin through an older link; `my_activity` visibility and cost |
 | `140_review_batch1` | Review batch 1: `withdrawn`, one open payment per debt, per-currency maximum and balance range, split-detail checks, history and empty saves, neutral friend requests, former members and group names, no direct group updates, masked invitee addresses |
 | `150_review_batch2` | Review batch 2: idempotency keys scoped to their creator (expenses, settlements, settle-up batches); pairwise balances net debts in both directions |
+| `160_recurring_receipts` | M7: schedule arithmetic (month ends, 29 February), the generator run repeatedly (each occurrence once), catch-up, time zones, end dates, create/edit/pause/resume/cancel with their checks and audit, failed occurrences, the pg_cron job, receipt limits and non-members denied |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

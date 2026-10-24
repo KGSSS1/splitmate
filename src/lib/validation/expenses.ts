@@ -36,7 +36,7 @@ const personSchema = z.object({
   shares: z.string().max(10),
 });
 
-const baseExpenseSchema = z.object({
+export const baseExpenseSchema = z.object({
   splitWith: z.string().regex(SPLIT_WITH_PATTERN, "Choose a group or a friend."),
   description: z.string().trim().min(1, "Describe the expense.").max(200, "Keep it under 200 characters."),
   amount: amountText,
@@ -75,11 +75,11 @@ const baseExpenseSchema = z.object({
 });
 
 /**
- * The expense form, validated the same way in the browser and in the Server
- * Action: structure first, then the split itself is resolved with the
- * accounting module and every problem is reported at its field.
+ * The split checks shared by the expense form and recurring templates:
+ * structure first, then the split itself is resolved with the accounting
+ * module and every problem is reported at its field.
  */
-export const expenseFormSchema = baseExpenseSchema.superRefine((values, context) => {
+export function refineExpense(values: z.output<typeof baseExpenseSchema>, context: z.RefinementCtx): void {
   // The form never lists anyone twice; a crafted payload would make the
   // accounting module throw (review L3), so report it instead.
   const duplicated = (ids: readonly string[]) => new Set(ids).size !== ids.length;
@@ -108,7 +108,10 @@ export const expenseFormSchema = baseExpenseSchema.superRefine((values, context)
       message: "An expense with a friend must involve both of you.",
     });
   }
-});
+}
+
+/** The expense form, validated the same way in the browser and in the Server Action. */
+export const expenseFormSchema = baseExpenseSchema.superRefine(refineExpense);
 
 export type ExpenseFormInput = z.input<typeof expenseFormSchema>;
 
