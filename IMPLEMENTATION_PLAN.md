@@ -2,7 +2,7 @@
 
 ## Handoff note (latest first)
 
-### 2026-10-24: M7 Recurring expenses and receipts complete (staging push pending approval)
+### 2026-10-24: M7 Recurring expenses and receipts complete (on staging)
 
 - **Migration** `20261024090000_recurring_receipts.sql`:
   - `recurring_expenses` gains `updated_by`, `idempotency_key` (unique per creator), `notes`, `tags`, `items` and an `ended` status. New notification type `recurring_failed`.
@@ -52,8 +52,12 @@
   - Notifications (`recurring_created`, `recurring_failed`) are written but have no UI until M8.
   - Itemized templates go through the same validation, but no test covers one specifically.
   - If the template's creator leaves the group, its future occurrences fail and pause it. Another member can't take it over.
-- **Staging:** not pushed. The migration creates the `pg_cron` extension and job on the hosted project when pushed, so it needs your approval (dry run first).
-- **Next:** with approval, push M7 to staging; then M8 (notifications, search, analytics, exports).
+- **Staging (approved 2026-10-24):**
+  - The dry run showed only `20261024090000_recurring_receipts.sql`, with no seeds or roles. It was pushed (this also enabled `pg_cron` and scheduled the hourly job on the hosted project), and remote history matches local (19 migrations).
+  - `db lint --linked` is clean. The advisors show 28 rule-0029 WARNs: the expected 25 plus `create_recurring_expense`, `update_recurring_expense` and `set_recurring_expense_status` (intended authenticated RPCs with their own checks).
+  - `staging` was pushed (`495f4fd`). The Vercel preview `splitmate-64sylfs93` was Ready in 44 s.
+  - **Smoke test** through the deployment URL: the landing page returns 200; `/recurring`, a recurring detail URL and a receipt link redirect to login. Not checked while logged in, so the hosted Storage upload path (signed upload URL + browser PUT) is untested on staging.
+- **Next:** M8 (notifications, search, analytics, exports).
 
 ### 2026-10-24: Review follow-ups, batch 3 (polish and accessibility)
 
@@ -503,13 +507,13 @@
 - [x] E2E steps 4–9 pass
 - [ ] Staging deploy of the MVP — **needs approval**
 
-### M7 — Recurring expenses and receipts (staging push pending approval)
+### M7 — Recurring expenses and receipts ✅
 - [x] Recurring templates (frequency, dates, timezone, resolved shares); pause/resume/cancel; edit applies to future occurrences only
 - [x] Month-end handling; idempotent `recurring_occurrences`
 - [x] `pg_cron` generator + npm script to run it manually (`npm run db:recurring`)
 - [x] Receipt upload (type sniffing, 5 MB, client compression), signed URLs
 - [x] Generator twice → each occurrence once; non-members denied receipts
-- [ ] Push the M7 migration and branch to staging — **needs approval**
+- [x] M7 migration and branch pushed to staging (approved 2026-10-24)
 
 ### M8 — Notifications, search, analytics, exports
 - [ ] In-app notifications created inside DB functions; unread count, mark read, preferences
