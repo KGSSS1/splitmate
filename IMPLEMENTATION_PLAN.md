@@ -20,7 +20,11 @@
   - Unit 507 ✓. Integration 25 ✓. pgTAP 476 ✓.
   - Playwright 44/44 ✓ (`--workers=2`), including axe.
   - In the first full run one phone test timed out waiting for "Create invite link" (the action was still pending after 5 s under load). It passed 3/3 alone, and the whole suite passed 44/44 when rerun.
-- **Not pushed yet:** batches 1–3 and migrations `20261023090000`, `20261023091000`, `20261023092000` wait for approval to go to staging.
+- **Staging (approved 2026-10-24):**
+  - The dry run showed only `20261023090000`, `20261023091000` and `20261023092000`, with no seed or roles. They were pushed, and remote history matches local (18 migrations).
+  - `db lint --linked` is clean. The advisors show 25 rule-0029 WARNs, the expected 22 plus `group_names`, `group_invitation_list` and `withdraw_friend_request` (intended authenticated RPCs with their own checks).
+  - `staging` was pushed (`fee6ed1`). The Vercel preview `splitmate-7sv6gr1yr` was Ready in 43 s.
+  - **Smoke test** through the deployment URL: the landing page returns 200; `/dashboard`, `/friends`, `/settle-up`, `/activity`, `/settlements` and an in-app 404 path redirect to login; the CSP `frame-ancestors`, `X-Frame-Options`, `nosniff` and `Referrer-Policy` headers are present and `X-Powered-By` is absent. Not checked while logged in.
 - **Known:** `npm audit` reports one high advisory in `body-parser`, reached via `shadcn` → `@modelcontextprotocol/sdk` → `express`. That is the shadcn CLI's MCP server, which the app never runs. It predates this work and is not fixed here.
 
 ### 2026-10-24: Review follow-ups, batch 2 (test hardening)
