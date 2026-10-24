@@ -2,7 +2,15 @@
 
 ## Handoff note (latest first)
 
-### 2026-10-25: M8 Notifications, search, analytics and exports complete (local; not pushed)
+### 2026-10-25: M8 on staging
+
+- **Approved 2026-10-25.** The dry run showed only `20261025090000_notifications_search_analytics.sql`, with no seeds or roles. It was pushed, and remote history matches local (21 migrations).
+- `db lint --linked` is clean. The advisors show the same 28 rule-0029 WARNs as after M7; the four new functions are SECURITY INVOKER, so they add none. One more WARN, `auth_leaked_password_protection`, is a hosted Auth setting, not a migration. It isn't in the M7 note and was left alone; turning it on is your call.
+- `staging` was pushed (`8f4a481`). The Vercel preview `splitmate-nuix0312u` is Ready and the branch URL serves it.
+- **Smoke test** through the branch URL: `/` and `/login` return 200; `/notifications`, `/search?q=…`, `/analytics`, `/analytics/export`, `/notifications/unread-count` and `/settings` redirect to login with `next`; CSP `frame-ancestors`, `X-Frame-Options`, `nosniff` and `Referrer-Policy` are present and `X-Powered-By` is absent. Not checked while logged in (no staging account of mine), so the pages' data and the CSV download are unverified on staging.
+- This note's commit is local; it will go up with the next push.
+
+### 2026-10-25: M8 Notifications, search, analytics and exports complete
 
 - **Migration** `20261025090000_notifications_search_analytics.sql` (SECURITY INVOKER reads and writes, so RLS applies throughout):
   - `mark_notifications_read(ids?)`: the given IDs (at most 100) or every unread one; returns the count. Someone else's IDs change nothing.
@@ -37,7 +45,6 @@
   - The badge doesn't update while you sit on a page; it refreshes on navigation and when the tab regains focus.
   - Email notifications don't exist (`notification_preferences.email` is unused).
   - The Claude browser pane only reveals streamed content while visible; pages were checked with Playwright screenshots instead (desktop/phone, light/dark, print).
-- **Not done (needs approval):** pushing the migration and branch to staging.
 - **Next:** M9 (conversion, PWA, privacy/data export and deletion, hardening, deployment).
 
 ### 2026-10-24: Staging login fix (wrong Supabase URL on Vercel Preview)
@@ -588,7 +595,7 @@
 - [x] Analytics (paid / your share / owed / settlements) with charts and table views
 - [x] Server-side CSV export; print stylesheet
 - [x] Tests for each; charts match database totals
-- [ ] M8 migration and branch pushed to staging — **needs approval**
+- [x] M8 migration and branch pushed to staging (approved 2026-10-25)
 
 ### M9 — Multi-currency conversion, PWA, privacy, hardening, deployment
 - [ ] Optional conversion with stored `exchange_rates` (Frankfurter)
