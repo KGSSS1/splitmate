@@ -24,8 +24,8 @@ select is((select group_type from public.groups where id = (select id from defau
           'the group type defaults to other');
 select throws_ok($$ select public.create_group('Bad', 'INR', null, 'party') $$, 'SM422', 'Unknown group type',
                  'an unknown group type is rejected');
-select throws_ok($$ select public.create_group('   ') $$, 'SM422', null, 'a blank name is rejected');
-select throws_ok(format($$ select public.create_group('Long', 'INR', %L) $$, repeat('x', 501)), 'SM422', null,
+select throws_ok($$ select public.create_group('   ') $$, 'SM422', 'Group name must be 1–100 characters', 'a blank name is rejected');
+select throws_ok(format($$ select public.create_group('Long', 'INR', %L) $$, repeat('x', 501)), 'SM422', 'Description must be at most 500 characters',
                  'a description over 500 characters is rejected');
 
 -- ---------------------------------------------------------------- update_group
@@ -51,27 +51,27 @@ select is((select count(*)::int from public.audit_events where action = 'group.u
 
 select tests.authenticate_as('bob');
 select throws_ok(format($$ select public.update_group(%L, 'Mine', null, 'INR', 'other', true) $$, tests.group_id('Main')),
-                 'SM403', null, 'a member who is not admin cannot change the settings');
+                 'SM403', 'Only a group admin can change the group settings', 'a member who is not admin cannot change the settings');
 select tests.authenticate_as('dave');
 select throws_ok(format($$ select public.update_group(%L, 'Mine', null, 'INR', 'other', true) $$, tests.group_id('Main')),
-                 'SM404', null, 'a non-member cannot find the group');
+                 'SM404', 'Group not found', 'a non-member cannot find the group');
 select tests.authenticate_as('alice');
 select throws_ok(format($$ select public.update_group(%L, 'Flat', null, 'ZZZ', 'home', true) $$, tests.group_id('Main')),
                  'SM422', 'Unsupported currency', 'settings are validated');
 select throws_ok(format($$ select public.update_group(%L, 'Flat', null, 'INR', 'home', null) $$, tests.group_id('Main')),
-                 'SM422', null, 'the simplify-debts flag is required');
+                 'SM422', 'Choose whether to simplify debts', 'the simplify-debts flag is required');
 
 -- ---------------------------------------------------------------- set_member_role
 select tests.authenticate_as('bob');
 select throws_ok(format($$ select public.set_member_role(%L, %L, 'admin') $$, tests.group_id('Main'), tests.uid('bob')),
-                 'SM403', null, 'a member cannot promote themselves');
+                 'SM403', 'Only a group admin can change roles', 'a member cannot promote themselves');
 select tests.authenticate_as('alice');
 select throws_ok(format($$ select public.set_member_role(%L, %L, 'member') $$, tests.group_id('Main'), tests.uid('alice')),
                  'SM409', 'A group needs at least one admin', 'the last admin cannot be demoted');
 select throws_ok(format($$ select public.set_member_role(%L, %L, 'owner') $$, tests.group_id('Main'), tests.uid('bob')),
-                 'SM422', null, 'an unknown role is rejected');
+                 'SM422', 'Unknown role', 'an unknown role is rejected');
 select throws_ok(format($$ select public.set_member_role(%L, %L, 'admin') $$, tests.group_id('Main'), tests.uid('dave')),
-                 'SM404', null, 'only current members can get a role');
+                 'SM404', 'Not a current member of this group', 'only current members can get a role');
 select lives_ok(format($$ select public.set_member_role(%L, %L, 'admin') $$, tests.group_id('Main'), tests.uid('bob')),
                 'an admin promotes a member');
 select lives_ok(format($$ select public.set_member_role(%L, %L, 'member') $$, tests.group_id('Main'), tests.uid('alice')),
@@ -96,7 +96,7 @@ select results_eq($$ select status, friend_id from public.send_friend_request('n
                   $$ values ('sent'::text, null::uuid) $$, 'an unknown email gets the same reply as a known one');
 select results_eq($$ select status from public.send_friend_request('carol@tests.local') $$,
                   $$ values ('self'::text) $$, 'your own email is reported');
-select throws_ok($$ select * from public.send_friend_request('not-an-email') $$, 'SM422', null, 'an invalid email is rejected');
+select throws_ok($$ select * from public.send_friend_request('not-an-email') $$, 'SM422', 'Invalid email address', 'an invalid email is rejected');
 
 reset role;
 select is((select count(*)::int from public.notifications where user_id = tests.uid('dave') and type = 'friend_request'),
@@ -105,11 +105,11 @@ select is((select count(*)::int from public.notifications where user_id = tests.
 select tests.authenticate_as('carol');
 select throws_ok(format($$ select public.accept_friend_request(%L) $$,
                         (select id from public.friendships where requested_by = tests.uid('carol'))),
-                 'SM403', null, 'the requester cannot accept their own request');
+                 'SM403', 'Only the person you asked can accept this request', 'the requester cannot accept their own request');
 select tests.authenticate_as('erin');
 select throws_ok(format($$ select public.accept_friend_request(%L) $$,
                         (select f.id from public.friendships f where f.requested_by = tests.uid('carol'))),
-                 'SM404', null, 'an outsider cannot accept (or see) the request');
+                 'SM404', 'Friend request not found', 'an outsider cannot accept (or see) the request');
 reset role;
 create temp table carol_dave as select id from public.friendships where requested_by = tests.uid('carol');
 grant select on carol_dave to authenticated;
@@ -122,7 +122,7 @@ select lives_ok(format($$ select public.accept_friend_request(%L) $$, (select id
 select results_eq($$ select status from public.send_friend_request('carol@tests.local') $$,
                   $$ values ('already_friends'::text) $$, 'a request to a friend reports already friends');
 select throws_ok(format($$ select public.delete_friend_request(%L) $$, (select id from carol_dave)),
-                 'SM409', null, 'an accepted friendship cannot be declined');
+                 'SM409', 'You are already friends', 'an accepted friendship cannot be declined');
 reset role;
 select is((select count(*)::int from public.notifications where user_id = tests.uid('carol') and type = 'friend_accepted'),
           1, 'the requester is notified of the acceptance');
@@ -161,14 +161,14 @@ select tests.authenticate_as('bob');
 select lives_ok(format($$ select public.delete_friend_request(%L) $$, (select friendship_id from bob_frank2)),
                 'the requester withdraws');
 select throws_ok(format($$ select public.delete_friend_request(%L) $$, (select friendship_id from bob_frank2)),
-                 'SM404', null, 'a withdrawn request no longer exists');
+                 'SM404', 'Friend request not found', 'a withdrawn request no longer exists');
 
 -- Clients cannot write friendships directly or read the rate-limit table.
 select throws_ok(format($$ insert into public.friendships (user_low, user_high, requested_by, status, accepted_at)
                            values (least(%1$L::uuid, %2$L::uuid), greatest(%1$L::uuid, %2$L::uuid), %1$L, 'accepted', now()) $$,
                         tests.uid('bob'), tests.uid('dave')),
-                 '42501', null, 'clients cannot create friendships directly');
-select throws_ok($$ select count(*) from private.rate_limit_events $$, '42501', null,
+                 '42501', 'permission denied for table friendships', 'clients cannot create friendships directly');
+select throws_ok($$ select count(*) from private.rate_limit_events $$, '42501', 'permission denied for table rate_limit_events',
                  'the rate-limit table is not readable by clients');
 
 -- Joining a group turns a pending request between members into a friendship.
@@ -190,7 +190,7 @@ select is((select status from public.friendships where id = (select friendship_i
 select tests.authenticate_as('alice');
 select lives_ok($$ select count(*) from generate_series(1, 30) as n, lateral public.send_friend_request('ghost' || n || '@tests.local') $$,
                 '30 lookups in an hour are allowed');
-select throws_ok($$ select * from public.send_friend_request('ghost31@tests.local') $$, 'SM429', null,
+select throws_ok($$ select * from public.send_friend_request('ghost31@tests.local') $$, 'SM429', 'Too many attempts; try again later',
                  'the 31st lookup in an hour is rate limited');
 
 -- ---------------------------------------------------------------- invitation_preview
@@ -241,8 +241,8 @@ select is((select count(*)::int from public.my_group_invitations()), 0, 'an acce
 
 -- ---------------------------------------------------------------- anon
 select tests.authenticate_anon();
-select throws_ok($$ select * from public.invitation_preview('x') $$, '42501', null, 'anon cannot preview invitations');
-select throws_ok($$ select * from public.send_friend_request('a@b.c') $$, '42501', null, 'anon cannot send friend requests');
+select throws_ok($$ select * from public.invitation_preview('x') $$, '42501', 'permission denied for function invitation_preview', 'anon cannot preview invitations');
+select throws_ok($$ select * from public.send_friend_request('a@b.c') $$, '42501', 'permission denied for function send_friend_request', 'anon cannot send friend requests');
 
 select * from finish();
 rollback;

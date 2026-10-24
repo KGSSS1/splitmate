@@ -22,17 +22,17 @@ select lives_ok(
 select throws_ok(
   format($$ insert into storage.objects (bucket_id, name, owner_id) values ('receipts', 'not-an-expense/receipt.jpg', %L) $$,
          tests.uid('alice')),
-  '42501', null, 'objects outside an expense folder are rejected');
+  '42501', 'new row violates row-level security policy for table "objects"', 'objects outside an expense folder are rejected');
 select throws_ok(
   format($$ insert into storage.objects (bucket_id, name, owner_id) values ('receipts', %L, %L) $$,
          tests.expense_id('lunch') || '/forged.jpg', tests.uid('bob')),
-  '42501', null, 'an upload must be owned by the uploader');
+  '42501', 'new row violates row-level security policy for table "objects"', 'an upload must be owned by the uploader');
 
 select tests.authenticate_as('dave');
 select throws_ok(
   format($$ insert into storage.objects (bucket_id, name, owner_id) values ('receipts', %L, %L) $$,
          tests.expense_id('lunch') || '/intruder.jpg', tests.uid('dave')),
-  '42501', null, 'a non-member cannot upload to someone else''s expense');
+  '42501', 'new row violates row-level security policy for table "objects"', 'a non-member cannot upload to someone else''s expense');
 
 -- ---------------------------------------------------------------- read
 select is((select count(*)::int from storage.objects where bucket_id = 'receipts'), 0,
@@ -53,7 +53,7 @@ select lives_ok(
 select throws_ok(
   format($$ insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes) values (%L, %L, %L, 'image/gif', 2048) $$,
          tests.expense_id('lunch'), tests.uid('alice'), tests.expense_id('lunch') || '/anim.gif'),
-  '23514', null, 'attachment types are restricted');
+  '23514', 'new row for relation "attachments" violates check constraint "attachments_mime_type_check"', 'attachment types are restricted');
 
 -- ---------------------------------------------------------------- delete (as the Storage API would)
 select tests.authenticate_as('bob');

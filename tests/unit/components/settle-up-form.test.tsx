@@ -83,6 +83,8 @@ describe("SettleUpForm", () => {
     await user.type(screen.getByLabelText("Amount"), "100");
     await user.click(screen.getByRole("button", { name: "Record payment" }));
     expect(await screen.findByText("Something went wrong. Please try again.")).toBeInTheDocument();
+    // Retry only once the button is usable again (review M17).
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record payment" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Record payment" }));
     await waitFor(() => expect(actions.createSettlement).toHaveBeenCalledTimes(2));
 

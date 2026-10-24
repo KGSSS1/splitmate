@@ -12,22 +12,23 @@ select tests.make_group('History', 'fa', array['fb', 'fc']);
 -- ---------------------------------------------------------------- 1 (high): pairwise entries must follow the payments
 select tests.authenticate_as('xb');
 select throws_ok(
-  format($$ select public.create_expense(gen_random_uuid(), %L, 'Rewired', 20000, 'INR', current_date, 'equal', %L, %L, %L) $$,
+  -- Exact shares, so the split itself is valid and only the routing is wrong.
+  format($$ select public.create_expense(gen_random_uuid(), %L, 'Rewired', 20000, 'INR', current_date, 'exact', %L, %L, %L) $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '20000'), tests.amounts('xa', '10000', 'xb', '10000', 'xc', '0'),
          tests.debts('xb', 'xc', '10000', 'xc', 'xa', '10000')),
-  'SM422', null, '#1 a debt cannot be routed through someone with no stake in the expense');
+  'SM422', 'Ledger entries must split each debt between the payers in proportion to what they overpaid', '#1 a debt cannot be routed through someone with no stake in the expense');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Both ways', 20000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '20000'), tests.amounts('xa', '10000', 'xb', '10000'),
          tests.debts('xb', 'xa', '500000', 'xa', 'xb', '490000')),
-  'SM422', null, '#1 the same pair cannot owe in both directions');
+  'SM422', 'Ledger entries must split each debt between the payers in proportion to what they overpaid', '#1 the same pair cannot owe in both directions');
 -- 1200 shared by four (300 each); xa paid 800 (+500), xb paid 400 (+100).
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Skewed', 1200, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '800', 'xb', '400'),
          tests.amounts('xa', '300', 'xb', '300', 'xc', '300', 'xd', '300'),
          tests.debts('xc', 'xa', '300', 'xd', 'xa', '200', 'xd', 'xb', '100')),
-  'SM422', null, '#1 a multi-payer allocation that is not proportional is rejected');
+  'SM422', 'Ledger entries must split each debt between the payers in proportion to what they overpaid', '#1 a multi-payer allocation that is not proportional is rejected');
 select lives_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Proportional', 1200, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '800', 'xb', '400'),
@@ -51,10 +52,10 @@ reset role;
 select ok((select revoked_at is not null from public.group_invitations where id = (select invitation_id from rb_invite)),
           '#2 removing a member revokes the invitations they created');
 select tests.authenticate_as('rb');
-select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from rb_invite)), 'SM409', null,
+select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from rb_invite)), 'SM409', 'This invitation has been revoked',
                  '#2 a removed member cannot rejoin with their own old invitation');
 select tests.authenticate_as('rn');
-select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from rb_invite)), 'SM409', null,
+select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from rb_invite)), 'SM409', 'This invitation has been revoked',
                  '#2 nobody can join through a removed member''s link');
 reset role;
 update public.group_invitations set revoked_at = null where id = (select invitation_id from rb_invite);
@@ -72,13 +73,13 @@ select public.create_settlement(gen_random_uuid(), tests.group_id('History'), te
 select tests.authenticate_as('fb');
 select public.leave_group(tests.group_id('History'));
 select tests.authenticate_as('fc');
-select throws_ok(format($$ select public.cancel_expense(%L, 1) $$, tests.expense_id('old')), 'SM409', null,
+select throws_ok(format($$ select public.cancel_expense(%L, 1) $$, tests.expense_id('old')), 'SM409', 'Someone in this expense has left the group, so it can no longer be changed',
                  '#3 an expense involving a former member cannot be cancelled');
 select throws_ok(
   format($$ select public.update_expense(%L, 1, 'Changed', 2000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.expense_id('old'), tests.amounts('fa', '2000'), tests.amounts('fa', '1000', 'fc', '1000'),
          tests.debts('fc', 'fa', '1000')),
-  'SM409', null, '#3 an expense involving a former member cannot be edited');
+  'SM409', 'Someone in this expense has left the group, so it can no longer be changed', '#3 an expense involving a former member cannot be edited');
 select is((select count(*)::int from public.group_balances(tests.group_id('History'))), 0,
           '#3 the former member''s balance stays zero');
 
@@ -98,7 +99,7 @@ with u as (update public.comments set body = 'Edited after removal' returning 1)
 select is(count(*)::int, 0, '#4 a removed member cannot edit their old comments') from u;
 
 -- ---------------------------------------------------------------- 5 (low): removed members cannot act on settlements
-select throws_ok(format($$ select public.cancel_settlement(%L) $$, (select id from rc_pending)), 'SM403', null,
+select throws_ok(format($$ select public.cancel_settlement(%L) $$, (select id from rc_pending)), 'SM403', 'You are no longer a member of this group',
                  '#5 a removed member cannot cancel a group settlement');
 reset role;
 select is((select status from public.settlements where id = (select id from rc_pending)), 'withdrawn',
@@ -153,11 +154,11 @@ select throws_ok(
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Far future', 100, 'INR', '9999-12-31', 'equal', %L, %L, '[]') $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '100'), tests.amounts('xa', '100')),
-  'SM422', null, '#10 expense dates must be plausible');
+  'SM422', 'Expense date must be between 2000 and one year from today', '#10 expense dates must be plausible');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Long tag', 100, 'INR', current_date, 'equal', %L, %L, '[]', p_tags => array[repeat('x', 41)]) $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '100'), tests.amounts('xa', '100')),
-  '23514', null, '#10 tags are limited to 40 characters each');
+  '23514', 'new row for relation "expenses" violates check constraint "expenses_tags_check"', '#10 tags are limited to 40 characters each');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Crowd', 101, 'INR', current_date, 'equal', %L, %L, '[]') $$,
          tests.group_id('Pairwise'), tests.amounts('xa', '101'),
@@ -172,7 +173,7 @@ update auth.users set email_confirmed_at = null where id = tests.uid('eb');
 select tests.authenticate_as('xa');
 create temp table email_invite as select * from public.create_invitation(tests.group_id('Pairwise'), 'eb@tests.local');
 select tests.authenticate_as('eb');
-select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from email_invite)), 'SM403', null,
+select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from email_invite)), 'SM403', 'Confirm your email address before accepting this invitation',
                  'an email invitation cannot be claimed before the email address is confirmed');
 -- A deleted (anonymized) account cannot keep writing with a still-valid token.
 reset role;
@@ -181,7 +182,7 @@ select tests.authenticate_as('xd');
 select throws_ok(
   format($$ insert into public.comments (expense_id, author_id, body) values (%L, %L, 'Ghost') $$,
          (select id from public.expenses where description = 'Proportional'), tests.uid('xd')),
-  '42501', null, 'a deleted account cannot comment');
+  '42501', 'new row violates row-level security policy for table "comments"', 'a deleted account cannot comment');
 
 -- ---------------------------------------------------------------- hardening: internal helpers
 reset role;

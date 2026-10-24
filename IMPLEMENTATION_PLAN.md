@@ -2,6 +2,24 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-24: Review follow-ups, batch 2 (test hardening)
+
+- **Fixed:** M17, M12, M13, M14, M15, M16, L33, L34, L37, L40, L41, L42. The table is in `docs/reviews/review-M6.md` under "Batch 2". Each new test was checked against the mutation it targets.
+- **M17 root cause:** state set after an `await` inside `startTransition` commits outside the transition, so errors rendered while the button was still disabled. Post-await updates are wrapped in a second `startTransition` (`use-action-submit`, `ActionButton`, invite panel, resend confirmation).
+- **Also:**
+  - `SubmitButton` is disabled until hydration: an early click used to GET the page with form values in the URL.
+  - "Cancel" on a pending payment now says it was withdrawn.
+  - L34 found that `090` #1 had silently switched to the new M3 guard; it now tests the routing guard again.
+  - fast-check runs with a fixed seed (`FC_SEED` overrides it).
+- **Tests added:**
+  - pgTAP `150_review_batch2` (13);
+  - unit: `use-action-submit`, `action-button`, `submit-button`, `fast-check-seed`, and `tests/unit/server/{auth,balances,settlement-actions,expense-friend-actions}`;
+  - the E2E simplified-plan test checks both suggestion lists.
+- **Checks:**
+  - `db reset` ✓; types unchanged; lint, typecheck and build ✓; `db lint` and advisors ✓.
+  - pgTAP 476 ✓. Integration 25 ✓. Playwright 38/38 ✓ (`--workers=2`).
+  - Unit 491 ✓, 10 runs in a row with zero failures.
+
 ### 2026-10-24: Review follow-ups, batch 1 (correctness, trust and security)
 
 - **Decisions (product owner):** fix the chosen Medium/Low findings in three batches, each committed before the next; push to staging only after all three. The five suggested spec changes are in `docs/SPEC.md`, plus a `withdrawn` settlement status, a neutral friend-request reply (L8) and a per-currency maximum expense amount (M2). The batch tables are in `docs/reviews/review-M6.md` under "Follow-up batches".

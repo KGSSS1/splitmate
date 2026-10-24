@@ -115,10 +115,11 @@ describe("auth and profiles against local Supabase", () => {
       .from("profiles")
       .update({ default_currency: "XYZ" })
       .eq("id", alice.id);
-    expect(currencyError).not.toBeNull();
+    // Review L37: the check constraint itself refuses it, not some other error.
+    expect(currencyError).toMatchObject({ code: "23514", message: expect.stringContaining("currency_code_supported") });
 
     const { error: nameError } = await client.from("profiles").update({ display_name: "   " }).eq("id", alice.id);
-    expect(nameError).not.toBeNull();
+    expect(nameError).toMatchObject({ code: "23514", message: expect.stringContaining("profiles_display_name_check") });
   });
 
   it("gives signed-out visitors no profile data", async () => {

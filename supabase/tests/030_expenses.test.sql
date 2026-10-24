@@ -74,7 +74,7 @@ select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Bad', 90000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Checks'), tests.amounts('alice', '90000'), (select shares from payload),
          tests.debts('bob', 'alice', '30000', 'carol', 'alice', '30000', 'dave', 'alice', '1')),
-  'SM422', null, 'ledger entries cannot involve outsiders');
+  'SM422', 'Ledger entries may only involve the expense''s payers and participants', 'ledger entries cannot involve outsiders');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Bad', 90000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Checks'), tests.amounts('alice', '90000'), tests.amounts('alice', '45000', 'dave', '45000'),
@@ -83,15 +83,15 @@ select throws_ok(
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Bad', 0, 'INR', current_date, 'equal', %L, %L, '[]') $$,
          tests.group_id('Checks'), tests.amounts('alice', '0'), tests.amounts('alice', '0')),
-  'SM422', null, 'zero amounts are rejected');
+  'SM422', 'Amount must be a positive whole number of minor units', 'zero amounts are rejected');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Bad', 9007199254740992, 'INR', current_date, 'equal', %L, %L, '[]') $$,
          tests.group_id('Checks'), tests.amounts('alice', '9007199254740992'), tests.amounts('alice', '9007199254740992')),
-  'SM422', null, 'amounts above the safe-integer limit are rejected');
+  'SM422', 'Amount must be a positive whole number of minor units', 'amounts above the safe-integer limit are rejected');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Bad', 100, 'INR', current_date, 'equal', %L, %L, '[]') $$,
          tests.group_id('Checks'), '[{"user_id": "' || tests.uid('alice') || '", "amount": 100.5}]', tests.amounts('alice', '100')),
-  'SM422', null, 'fractional minor units are rejected');
+  'SM422', 'amount must be a whole, positive amount in minor units', 'fractional minor units are rejected');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Bad', 100, 'inr', current_date, 'equal', %L, %L, '[]') $$,
          tests.group_id('Checks'), tests.amounts('alice', '100'), tests.amounts('alice', '100')),
@@ -137,19 +137,19 @@ select lives_ok(
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), null, 'Taxi', 20000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.amounts('alice', '20000'), tests.amounts('alice', '10000', 'frank', '10000'), tests.debts('frank', 'alice', '10000')),
-  'SM403', null, 'a direct expense requires friendship');
+  'SM403', 'You can only share expenses with friends', 'a direct expense requires friendship');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), null, 'Taxi', 30000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.amounts('alice', '30000'), tests.amounts('alice', '10000', 'erin', '10000', 'bob', '10000'),
          tests.debts('erin', 'alice', '10000', 'bob', 'alice', '10000')),
-  'SM422', null, 'a direct expense is between exactly two people');
+  'SM422', 'A direct expense or settlement is between you and one friend', 'a direct expense is between exactly two people');
 
 -- ---------------------------------------------------------------- non-member caller
 select tests.authenticate_as('dave');
 select throws_ok(
   format($$ select public.update_expense(%L, 1, 'Mine now', 90000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.expense_id('e1'), tests.amounts('alice', '90000'), (select shares from payload), (select debts from payload)),
-  'SM403', null, 'a non-member cannot edit a group expense');
+  'SM403', 'Only current group members can change this expense', 'a non-member cannot edit a group expense');
 
 -- ---------------------------------------------------------------- edit (by bob, any member may edit)
 select tests.authenticate_as('bob');
@@ -174,7 +174,7 @@ select is((select count(*)::int from public.expense_participants where expense_i
 select throws_ok(
   format($$ select public.update_expense(%L, 1, 'Stale', 90000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.expense_id('e1'), tests.amounts('alice', '90000'), (select shares from payload), (select debts from payload)),
-  'SM409', null, 'an edit based on a stale version is rejected (concurrent edit)');
+  'SM409', 'This expense was changed by someone else; reload and try again', 'an edit based on a stale version is rejected (concurrent edit)');
 
 -- ---------------------------------------------------------------- audit & notifications
 reset role;
@@ -198,17 +198,17 @@ select is((select count(*)::int from public.notifications
 
 -- ---------------------------------------------------------------- cancel
 select tests.authenticate_as('carol');
-select throws_ok(format($$ select public.cancel_expense(%L, 1) $$, tests.expense_id('e1')), 'SM409', null,
+select throws_ok(format($$ select public.cancel_expense(%L, 1) $$, tests.expense_id('e1')), 'SM409', 'This expense was changed by someone else; reload and try again',
                  'cancelling with a stale version is rejected');
 select lives_ok(format($$ select public.cancel_expense(%L, 2) $$, tests.expense_id('e1')), 'a member cancels the expense');
 select is((select count(*)::int from public.group_balances(tests.group_id('Trip'))), 0,
           'cancelling fully reverses the expense: all balances are zero');
-select throws_ok(format($$ select public.cancel_expense(%L, 2) $$, tests.expense_id('e1')), 'SM409', null,
+select throws_ok(format($$ select public.cancel_expense(%L, 2) $$, tests.expense_id('e1')), 'SM409', 'This expense has been cancelled',
                  'a cancelled expense cannot be cancelled again');
 select throws_ok(
   format($$ select public.update_expense(%L, 2, 'Revive', 90000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.expense_id('e1'), tests.amounts('alice', '90000'), (select shares from payload), (select debts from payload)),
-  'SM409', null, 'a cancelled expense cannot be edited');
+  'SM409', 'This expense has been cancelled', 'a cancelled expense cannot be edited');
 
 -- ---------------------------------------------------------------- notification preferences
 insert into public.notification_preferences (user_id, type, in_app) values (tests.uid('carol'), 'expense_added', false);

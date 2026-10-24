@@ -99,10 +99,10 @@ select is((select count(*)::int from public.profile_cards(array[tests.uid('alice
 select is((select count(*)::int from public.group_balances(tests.group_id('RLS group'))), 0,
           'non-member: no group balances');
 select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('RLS group')),
-                 'SM403', null, 'non-member: cannot create an invitation');
+                 'SM403', 'You are not a member of this group', 'non-member: cannot create an invitation');
 select throws_ok(format($$ select public.create_expense(gen_random_uuid(), %L, 'Sneaky', 100, 'INR', current_date, 'equal', %L, %L, '[]') $$,
                         tests.group_id('RLS group'), tests.amounts('dave', '100'), tests.amounts('dave', '100')),
-                 'SM403', null, 'non-member: cannot add an expense to the group');
+                 'SM403', 'You are not a member of this group', 'non-member: cannot add an expense to the group');
 
 -- ---------------------------------------------------------------- removed member (carol)
 select tests.authenticate_as('carol');
@@ -123,12 +123,12 @@ select is((select count(*)::int from public.group_balances(tests.group_id('RLS g
           'removed member: their own history nets to zero');
 select throws_ok(format($$ insert into public.comments (expense_id, author_id, body) values (%L, %L, 'Hi') $$,
                         tests.expense_id('rls-e1'), tests.uid('carol')),
-                 '42501', null, 'removed member: cannot comment');
+                 '42501', 'new row violates row-level security policy for table "comments"', 'removed member: cannot comment');
 select is((select count(*)::int from public.audit_events where entity_id = tests.expense_id('rls-e2')), 0,
           'removed member: cannot see the history of later expenses');
 select throws_ok(format($$ select public.create_expense(gen_random_uuid(), %L, 'After leaving', 100, 'INR', current_date, 'equal', %L, %L, '[]') $$,
                         tests.group_id('RLS group'), tests.amounts('carol', '100'), tests.amounts('carol', '100')),
-                 'SM403', null, 'removed member: cannot add expenses');
+                 'SM403', 'You are not a member of this group', 'removed member: cannot add expenses');
 
 -- ---------------------------------------------------------------- current member (bob)
 select tests.authenticate_as('bob');
@@ -136,7 +136,7 @@ select is((select count(*)::int from public.expenses), 2, 'member: sees both gro
 select is((select count(*)::int from public.ledger_entries), 4, 'member: sees the whole group ledger');
 select is((select count(*)::int from public.group_members), 3, 'member: sees current and former members');
 select is((select count(*)::int from public.group_invitations), 1, 'member: sees the group''s invitations');
-select throws_ok($$ select token_hash from public.group_invitations $$, '42501', null,
+select throws_ok($$ select token_hash from public.group_invitations $$, '42501', 'permission denied for table group_invitations',
                  'member: cannot read invitation token hashes');
 select is((select count(*)::int from public.comments), 1, 'member: sees comments');
 select is((select count(*)::int from public.attachments), 1, 'member: sees attachments');
@@ -156,15 +156,15 @@ select is((select count(*)::int from public.friendships), 2, 'member: sees their
 select throws_ok(format($$ insert into public.expenses (created_by, updated_by, description, amount, currency, expense_date, split_method, idempotency_key)
                            values (%L, %L, 'Direct insert', 1, 'INR', current_date, 'equal', gen_random_uuid()) $$,
                         tests.uid('bob'), tests.uid('bob')),
-                 '42501', null, 'member: cannot insert expenses directly');
-select throws_ok($$ delete from public.ledger_entries $$, '42501', null, 'member: cannot delete ledger entries');
+                 '42501', 'permission denied for table expenses', 'member: cannot insert expenses directly');
+select throws_ok($$ delete from public.ledger_entries $$, '42501', 'permission denied for table ledger_entries', 'member: cannot delete ledger entries');
 -- Review M6 L10: nobody updates groups directly; settings go through update_group.
-select throws_ok($$ update public.groups set name = 'Hacked' $$, '42501', null, 'member: cannot update the group row directly');
+select throws_ok($$ update public.groups set name = 'Hacked' $$, '42501', 'permission denied for table groups', 'member: cannot update the group row directly');
 with u as (update public.profiles set display_name = 'Bobby' returning 1)
 select is(count(*)::int, 1, 'member: can update their own profile') from u;
 with u as (update public.profiles set display_name = 'Hacked' where id = tests.uid('alice') returning 1)
 select is(count(*)::int, 0, 'member: cannot update someone else''s profile') from u;
-select throws_ok($$ update public.profiles set email = 'x@tests.local' $$, '42501', null,
+select throws_ok($$ update public.profiles set email = 'x@tests.local' $$, '42501', 'permission denied for table profiles',
                  'member: cannot change their email column directly');
 with u as (update public.notifications set read_at = now() returning 1)
 select ok(count(*) > 0, 'member: can mark their notifications as read') from u;
@@ -178,7 +178,7 @@ select is((select count(*)::int from public.groups), 0, 'friend: sees no groups 
 -- ---------------------------------------------------------------- admin (alice)
 select tests.authenticate_as('alice');
 -- Review M6 L10: admins change settings through update_group (audited), never the row itself.
-select throws_ok($$ update public.groups set simplify_debts = false $$, '42501', null,
+select throws_ok($$ update public.groups set simplify_debts = false $$, '42501', 'permission denied for table groups',
                  'admin: cannot update the group row directly');
 select lives_ok(format($$ insert into public.comments (expense_id, author_id, body) values (%L, %L, 'Paid by cash') $$,
                        tests.expense_id('rls-d1'), tests.uid('alice')),
@@ -186,11 +186,11 @@ select lives_ok(format($$ insert into public.comments (expense_id, author_id, bo
 
 -- ---------------------------------------------------------------- anonymous
 select tests.authenticate_anon();
-select throws_ok($$ select count(*) from public.expenses $$, '42501', null, 'anon: cannot read expenses');
-select throws_ok($$ select count(*) from public.profiles $$, '42501', null, 'anon: cannot read profiles');
-select throws_ok($$ select public.create_group('Anon group') $$, '42501', null, 'anon: cannot call RPC functions');
+select throws_ok($$ select count(*) from public.expenses $$, '42501', 'permission denied for table expenses', 'anon: cannot read expenses');
+select throws_ok($$ select count(*) from public.profiles $$, '42501', 'permission denied for table profiles', 'anon: cannot read profiles');
+select throws_ok($$ select public.create_group('Anon group') $$, '42501', 'permission denied for function create_group', 'anon: cannot call RPC functions');
 select throws_ok(format($$ select * from public.group_balances(%L) $$, tests.group_id('RLS group')),
-                 '42501', null, 'anon: cannot read balances');
+                 '42501', 'permission denied for function group_balances', 'anon: cannot read balances');
 
 reset role;
 select * from finish();

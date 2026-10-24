@@ -160,6 +160,29 @@ The product owner decided which Medium and Low findings to fix and grouped them 
 | L13 | Session cookies are HttpOnly, SameSite=Lax, and Secure in production builds. | E2E "the session cookie is HttpOnly" |
 | L14 | `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`; no `X-Powered-By`. | E2E "pages send security headers" |
 
+### Batch 2: test hardening
+
+Each new test was checked against the mutation it is meant to catch (the mutation fails the test; the real code passes).
+
+| ID | Fix | Tests (mutation caught) |
+| --- | --- | --- |
+| M17 | **Root cause:** state set after an `await` inside `startTransition` isn't part of the transition, so the error rendered while `pending` still disabled the button. Post-await updates are now wrapped in a second `startTransition` in `use-action-submit`, `ActionButton`, the invite panel and "Resend confirmation". The two flaky tests also wait for the button to be enabled before retrying. | `tests/unit/hooks/use-action-submit.test.tsx` and `action-button.test.tsx` record every commit and failed on the old code; the unit suite then passed 10 runs in a row |
+| M12 | Another person reusing an idempotency key gets their own expense, settlement or settle-up batch. | `150_review_batch2` #1–9 (lookup without `created_by` in `create_expense`, `record_settlement`, `settle_up_with_friend`) |
+| M13 | Unit tests with mocked clients for `src/server/auth.ts`, `src/server/balances.ts` and the settlement, expense and friend actions. | `tests/unit/server/{auth,balances,settlement-actions,expense-friend-actions}.test.ts` |
+| M14 | A 3-person group whose plan differs from the raw debts: the suggestions follow the toggle. | `balances.test.ts` (T2: toggle ignored); E2E "friend balances follow the group's simplified plan" checks both lists |
+| M15 | "paid" / "received" map to payer and receiver; yourself as the other person is refused without an RPC. | `settlement-actions.test.ts` (T3: mapping swapped) |
+| M16 | Debts in both directions inside a group net to one row. | `150_review_batch2` #10–13 (S5: no netting) |
+| L33 | Near misses of `/auth/` and `/invite/` (`/auth`, `/authx/…`, `/author`, …) are protected. | `routes.test.ts` (prefix without the slash) |
+| L34 | Every `throws_ok` names the message it expects, not just the SQLSTATE: 125 assertions across the pgTAP files. One (`090` #1) had silently moved to the new split-detail guard; it now uses an exact split, so the routing guard is what refuses it. | all pgTAP files |
+| L37 | Profile constraint tests expect `23514` and the constraint's name. | `auth-profile.test.ts` |
+| L40 | `transfersInvolving` from the receiver's side, raw and simplified. | `suggestions.test.ts` (payer-only filter) |
+| L41 | An older "cancelled" pending payment doesn't say it was reversed. | `describe.test.ts` (effect always "reversed") |
+| L42 | fast-check uses a fixed global seed (`FC_SEED` overrides it). | `tests/unit/fast-check-seed.test.ts` |
+
+Also fixed in passing:
+- Cancelling a pending payment now says "Payment withdrawn. Balances are unchanged." instead of "Settlement cancelled." (batch 1 left the old message).
+- `SubmitButton` stays disabled until hydration. A click before then made the browser GET the page with the form's values in the URL and saved nothing. The new M14 E2E step hit this once; `submit-button.test.tsx` failed on the old code.
+
 ## Medium (as reported; see the batches above for what was decided and fixed)
 
 | ID | Finding | Where | Reproduce | Recommendation |

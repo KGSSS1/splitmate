@@ -64,18 +64,18 @@ create temp table flat as select tests.group_id('Flat')::text as id;
 grant select on flat to authenticated;
 
 select tests.authenticate_as('alice');
-select throws_ok(format($$ select public.settle_up_with_friend(null, %L, '[]') $$, tests.uid('bob')), 'SM422', null,
+select throws_ok(format($$ select public.settle_up_with_friend(null, %L, '[]') $$, tests.uid('bob')), 'SM422', 'An idempotency key is required',
                  'an idempotency key is required');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, '[]') $$, tests.uid('b0'), tests.uid('alice')),
-                 'SM422', null, 'you cannot settle up with yourself');
+                 'SM422', 'Choose a friend to settle up with', 'you cannot settle up with yourself');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('dave'),
                         pg_temp.items('', 'INR', '100')),
-                 'SM403', null, 'you can only settle up with friends');
+                 'SM403', 'You can only settle up with friends', 'you can only settle up with friends');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, '[]') $$, tests.uid('b0'), tests.uid('bob')),
                  'SM422', 'There is nothing to settle with this friend', 'an empty list is refused');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L, 'cheque') $$, tests.uid('b0'), tests.uid('bob'),
                         pg_temp.items((select id from flat), 'INR', '30000')),
-                 'SM422', null, 'an unknown payment method is refused');
+                 'SM422', 'Unknown payment method', 'an unknown payment method is refused');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
                         pg_temp.items('', 'INR', '-9999')),
                  'SM409', 'Balances have changed. Reload and try again',
@@ -93,10 +93,10 @@ select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, t
                  'SM422', 'Each group and currency can appear only once', 'duplicate items are refused');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
                         pg_temp.items('', 'INR', '0')),
-                 'SM422', null, 'a zero amount is refused');
+                 'SM422', 'Each balance must be a non-zero whole amount in minor units', 'a zero amount is refused');
 select throws_ok(format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('b0'), tests.uid('bob'),
                         pg_temp.items('', 'INR', '-9999.5')),
-                 'SM422', null, 'a fractional amount is refused');
+                 'SM422', 'Each balance must be a non-zero whole amount in minor units', 'a fractional amount is refused');
 select is((select count(*)::int from public.settlements where batch_id = tests.uid('b0')), 0,
           'a refused batch records nothing');
 
@@ -207,11 +207,11 @@ select is((select batch_id from public.settlements where id = public.create_sett
 select throws_ok(
   format($$ select public.create_settlement(%L, %L, %L, %L, 100, 'INR', 'upi', repeat('x', 65)) $$,
          tests.uid('long-ref'), tests.group_id('Flat'), tests.uid('bob'), tests.uid('alice')),
-  'SM422', null, 'a UPI reference over 64 characters is refused with a readable error');
+  'SM422', 'Keep the UPI reference under 64 characters', 'a UPI reference over 64 characters is refused with a readable error');
 select throws_ok(
   format($$ select public.create_settlement(%L, %L, %L, %L, 100, 'INR', 'cash', null, null, current_date + 30) $$,
          tests.uid('future'), tests.group_id('Flat'), tests.uid('bob'), tests.uid('alice')),
-  'SM422', null, 'a settlement dated in the future is refused');
+  'SM422', 'Choose a date from 2000 up to today', 'a settlement dated in the future is refused');
 
 -- ---------------------------------------------------------------- privileges
 reset role;

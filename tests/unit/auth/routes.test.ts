@@ -21,6 +21,14 @@ describe("getRouteAccess", () => {
     ["/invite", "protected"],
     ["/no-such-page", "protected"],
     ["/loginx", "protected"],
+    // Near misses of the public prefixes (review L33).
+    ["/auth", "protected"],
+    ["/auth/", "protected"],
+    ["/authx/confirm", "protected"],
+    ["/author", "protected"],
+    ["/dashboard/auth/confirm", "protected"],
+    ["/invitex/abc", "protected"],
+    ["/invite/", "protected"],
   ] as const)("%s is %s", (path, access) => {
     expect(getRouteAccess(path)).toBe(access);
   });

@@ -30,12 +30,18 @@ export function useActionSubmit<TFieldValues extends FieldValues, TSubmit>(
       }
       // A redirecting action resolves without a result.
       if (!next) return;
-      setResult(next);
-      if (!next.ok && next.fieldErrors) {
-        for (const [name, message] of Object.entries(next.fieldErrors)) {
-          setError(name as Path<TFieldValues>, { type: "server", message });
+      // Updates after an await aren't part of the transition unless wrapped
+      // again; otherwise the result can render while `pending` (the disabled
+      // button) is still true (review M17).
+      const result = next;
+      startTransition(() => {
+        setResult(result);
+        if (!result.ok && result.fieldErrors) {
+          for (const [name, message] of Object.entries(result.fieldErrors)) {
+            setError(name as Path<TFieldValues>, { type: "server", message });
+          }
         }
-      }
+      });
     });
   }
 

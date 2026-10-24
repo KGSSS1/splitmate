@@ -18,13 +18,13 @@ select is((select status from public.settlements where id = tests.settlement_id(
           'a settlement recorded by the payer is pending');
 select is((select count(*)::int from public.ledger_entries where settlement_id = tests.settlement_id('s1')), 0,
           'a pending settlement has no balance effect');
-select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s1')), 'SM403', null,
+select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s1')), 'SM403', 'Only the receiver can confirm a settlement',
                  'the payer cannot confirm their own settlement');
-select throws_ok(format($$ select public.reject_settlement(%L) $$, tests.settlement_id('s1')), 'SM403', null,
+select throws_ok(format($$ select public.reject_settlement(%L) $$, tests.settlement_id('s1')), 'SM403', 'Only the receiver can reject a settlement',
                  'the payer cannot reject their own settlement');
 
 select tests.authenticate_as('dave');
-select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s1')), 'SM404', null,
+select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s1')), 'SM404', 'Settlement not found',
                  'an outsider cannot confirm a settlement');
 
 -- ---------------------------------------------------------------- receiver confirms
@@ -37,7 +37,7 @@ select set_eq(
   format($$ values (%L::uuid, 'INR'::text, 50000::bigint), (%L::uuid, 'INR', -20000), (%L::uuid, 'INR', -30000) $$,
          tests.uid('alice'), tests.uid('bob'), tests.uid('carol')),
   'SPEC §17: balances update to A +₹500, B −₹200, C −₹300');
-select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s1')), 'SM409', null,
+select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s1')), 'SM409', 'Cannot confirm a completed settlement',
                  'a settlement cannot be confirmed twice');
 select is((select count(*)::int from public.ledger_entries where settlement_id = tests.settlement_id('s1')), 1,
           'a settlement is never counted twice');
@@ -64,7 +64,7 @@ select is((select count(*)::int from public.ledger_entries
           'cancelling a completed settlement writes a reversal');
 select is((select amount from public.group_balances(tests.group_id('Flat')) where user_id = tests.uid('carol')),
           -30000::bigint, 'the cancelled settlement no longer affects balances');
-select throws_ok(format($$ select public.cancel_settlement(%L) $$, tests.settlement_id('s2')), 'SM409', null,
+select throws_ok(format($$ select public.cancel_settlement(%L) $$, tests.settlement_id('s2')), 'SM409', 'Cannot cancel a cancelled settlement',
                  'a cancelled settlement is final');
 
 -- ---------------------------------------------------------------- withdraw / reject pending
@@ -73,7 +73,7 @@ select lives_ok(
          tests.uid('s3'), tests.group_id('Flat'), tests.uid('carol'), tests.uid('alice')),
   'carol records a pending payment');
 select tests.authenticate_as('alice');
-select throws_ok(format($$ select public.cancel_settlement(%L) $$, tests.settlement_id('s3')), 'SM403', null,
+select throws_ok(format($$ select public.cancel_settlement(%L) $$, tests.settlement_id('s3')), 'SM403', 'The receiver rejects a pending settlement instead of cancelling it',
                  'the receiver rejects rather than cancels a pending settlement');
 select tests.authenticate_as('carol');
 select lives_ok(format($$ select public.cancel_settlement(%L) $$, tests.settlement_id('s3')),
@@ -91,22 +91,22 @@ select is((select count(*)::int from public.ledger_entries where settlement_id =
           'a rejected settlement never touched the ledger');
 select is((select amount from public.group_balances(tests.group_id('Flat')) where user_id = tests.uid('carol')),
           -30000::bigint, 'a rejected settlement leaves balances as they were');
-select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s4')), 'SM409', null,
+select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('s4')), 'SM409', 'Cannot confirm a rejected settlement',
                  'a rejected settlement cannot be confirmed later');
 
 -- ---------------------------------------------------------------- who may settle
 select throws_ok(
   format($$ select public.create_settlement(gen_random_uuid(), %L, %L, %L, 100, 'INR') $$,
          tests.group_id('Flat'), tests.uid('bob'), tests.uid('carol')),
-  'SM403', null, 'only the payer or receiver can record a settlement');
+  'SM403', 'Only the payer or the receiver can record a settlement', 'only the payer or receiver can record a settlement');
 select throws_ok(
   format($$ select public.create_settlement(gen_random_uuid(), %L, %L, %L, 100, 'INR') $$,
          tests.group_id('Flat'), tests.uid('alice'), tests.uid('alice')),
-  'SM422', null, 'a settlement needs two different people');
+  'SM422', 'A settlement needs a payer and a different receiver', 'a settlement needs two different people');
 select throws_ok(
   format($$ select public.create_settlement(gen_random_uuid(), %L, %L, %L, 100, 'INR') $$,
          tests.group_id('Flat'), tests.uid('dave'), tests.uid('alice')),
-  'SM422', null, 'both people must be current members of the group');
+  'SM422', 'Everyone involved must be a current member of the group', 'both people must be current members of the group');
 select lives_ok(
   format($$ select public.create_settlement(%L, null, %L, %L, 700, 'INR') $$,
          tests.uid('direct'), tests.uid('erin'), tests.uid('alice')),
@@ -114,7 +114,7 @@ select lives_ok(
 select throws_ok(
   format($$ select public.create_settlement(gen_random_uuid(), null, %L, %L, 700, 'INR') $$,
          tests.uid('frank'), tests.uid('alice')),
-  'SM403', null, 'a direct settlement requires friendship');
+  'SM403', 'You can only share expenses with friends', 'a direct settlement requires friendship');
 
 -- A simplified transfer between members with no direct pairwise debt is valid (SPEC §7).
 select tests.authenticate_as('carol');

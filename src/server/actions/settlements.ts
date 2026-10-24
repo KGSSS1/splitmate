@@ -112,7 +112,13 @@ export async function settleUpEverything(input: unknown): Promise<ActionResult> 
 
 type Transition = "confirm_settlement" | "reject_settlement" | "cancel_settlement";
 
-async function transition(input: unknown, fn: Transition, message: string): Promise<ActionResult> {
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+async function transition(
+  input: unknown,
+  fn: Transition,
+  message: string | ((supabase: Client, settlementId: string) => Promise<string>),
+): Promise<ActionResult> {
   const parsed = settlementIdSchema.safeParse(input);
   if (!parsed.success) return invalidInput(parsed.error);
 
@@ -120,11 +126,12 @@ async function transition(input: unknown, fn: Transition, message: string): Prom
   // Confirming or cancelling money needs a session Supabase Auth still knows (L12).
   await requireLiveSession();
   const supabase = await createClient();
-  const { error } = await supabase.rpc(fn, { p_settlement_id: parsed.data.settlementId });
+  const { settlementId } = parsed.data;
+  const { error } = await supabase.rpc(fn, { p_settlement_id: settlementId });
   if (error) return rpcFailure(error);
 
   refresh();
-  return { ok: true, message };
+  return { ok: true, message: typeof message === "string" ? message : await message(supabase, settlementId) };
 }
 
 /** The receiver confirms a payer's record: only now does it change balances. */
@@ -139,5 +146,10 @@ export async function rejectSettlement(input: unknown): Promise<ActionResult> {
 
 /** The payer withdraws a pending record, or either person cancels a completed one (reversed in the ledger). */
 export async function cancelSettlement(input: unknown): Promise<ActionResult> {
-  return transition(input, "cancel_settlement", "Settlement cancelled.");
+  return transition(input, "cancel_settlement", async (supabase, settlementId) => {
+    const { data } = await supabase.from("settlements").select("status").eq("id", settlementId).maybeSingle();
+    return data?.status === "withdrawn"
+      ? "Payment withdrawn. Balances are unchanged."
+      : "Settlement cancelled and reversed.";
+  });
 }

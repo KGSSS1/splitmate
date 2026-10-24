@@ -166,6 +166,8 @@ describe("ExpenseForm", () => {
     await user.type(screen.getByLabelText("Amount"), "900");
     await user.click(save());
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach the server.");
+    // Retry only once Save is usable again (review M17).
+    await vi.waitFor(() => expect(save()).toBeEnabled());
     await user.click(save());
 
     await vi.waitFor(() => expect(actions.createExpense).toHaveBeenCalledTimes(2));

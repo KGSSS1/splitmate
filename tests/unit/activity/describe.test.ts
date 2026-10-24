@@ -125,6 +125,24 @@ describe("describeActivity", () => {
     ).toMatchObject({ title: "Bina cancelled the ₹100.00 payment from Bina to you", effect: "Its effect on balances was reversed" });
   });
 
+  // Review L41: audit rows from before the `withdrawn` status record a pending
+  // payment called off as "cancelled". It never changed balances, so nothing was reversed.
+  it("an older cancelled pending payment doesn't claim a reversal", () => {
+    const item = describeActivity(
+      row({
+        entity_type: "settlement",
+        action: "settlement.cancelled",
+        actor_id: "b",
+        before: settlement({ status: "pending" }),
+        after: settlement({ status: "cancelled" }),
+      }),
+      "a",
+      nameOf,
+    );
+    expect(item?.title).toBe("Bina cancelled the ₹100.00 payment from Bina to you");
+    expect(item?.effect).toBeNull();
+  });
+
   it("a withdrawn payment never changed balances", () => {
     const withdrawn = row({
       entity_type: "settlement",

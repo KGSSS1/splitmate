@@ -79,12 +79,15 @@ function ResendConfirmation({ email }: { email: string }) {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
+            let next: string | null;
             try {
               const result = await resendConfirmation({ email });
-              setMessage(result.ok ? (result.message ?? null) : result.error);
+              next = result.ok ? (result.message ?? null) : result.error;
             } catch {
-              setMessage("Couldn't reach the server. Try again.");
+              next = "Couldn't reach the server. Try again.";
             }
+            // Commit the message with the re-enabled button (review M17).
+            startTransition(() => setMessage(next));
           })
         }
       >

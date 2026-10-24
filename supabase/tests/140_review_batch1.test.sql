@@ -42,12 +42,12 @@ select lives_ok(
 select throws_ok(
   format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('l2-b'), tests.uid('alice'),
          jsonb_build_array(jsonb_build_object('group_id', tests.group_id('Flat'), 'currency', 'INR', 'amount', -30000))),
-  'SM409', null, 'bob can''t record the same debt again while it is pending');
+  'SM409', 'A payment between you two is waiting for confirmation here. Confirm, reject or withdraw it first', 'bob can''t record the same debt again while it is pending');
 select tests.authenticate_as('alice');
 select throws_ok(
   format($$ select public.settle_up_with_friend(%L, %L, %L) $$, tests.uid('l2-c'), tests.uid('bob'),
          jsonb_build_array(jsonb_build_object('group_id', tests.group_id('Flat'), 'currency', 'INR', 'amount', 30000))),
-  'SM409', null, 'alice can''t record it as received while bob''s payment waits for her answer');
+  'SM409', 'A payment between you two is waiting for confirmation here. Confirm, reject or withdraw it first', 'alice can''t record it as received while bob''s payment waits for her answer');
 select is((select count(*)::int from public.settlements
             where group_id = tests.group_id('Flat') and status = 'pending'), 1,
           'only one pending settlement exists for that debt');
@@ -61,7 +61,7 @@ select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Car', 1000000001, 'INR', current_date, 'exact', %L, %L, %L) $$,
          tests.group_id('Big'), tests.amounts('erin', '1000000001'), tests.amounts('frank', '1000000001'),
          tests.debts('frank', 'erin', '1000000001')),
-  'SM422', null, 'an INR expense above ₹1,00,00,000 is refused');
+  'SM422', 'This is more than one expense in INR can be', 'an INR expense above ₹1,00,00,000 is refused');
 select lives_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Car', 1000000000, 'INR', current_date, 'exact', %L, %L, %L) $$,
          tests.group_id('Big'), tests.amounts('erin', '1000000000'), tests.amounts('frank', '1000000000'),
@@ -71,7 +71,7 @@ select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Car', 15000001, 'JPY', current_date, 'exact', %L, %L, %L) $$,
          tests.group_id('Big'), tests.amounts('erin', '15000001'), tests.amounts('frank', '15000001'),
          tests.debts('frank', 'erin', '15000001')),
-  'SM422', null, 'a JPY expense above ¥15,000,000 is refused (limits are per currency)');
+  'SM422', 'This is more than one expense in JPY can be', 'a JPY expense above ¥15,000,000 is refused (limits are per currency)');
 
 -- Balances near the limit TypeScript can represent: a crafted ledger row (as postgres) puts
 -- frank's debt to erin (₹1 crore = 1,000,000,000 paise so far) just under 2^53 − 1;
@@ -85,7 +85,7 @@ select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Lunch', 1000000000, 'INR', current_date, 'exact', %L, %L, %L) $$,
          tests.group_id('Big'), tests.amounts('erin', '1000000000'), tests.amounts('frank', '1000000000'),
          tests.debts('frank', 'erin', '1000000000')),
-  'SM422', null, 'a write that would push a balance beyond what the app can represent exactly is refused');
+  'SM422', 'This would make a balance too large to keep track of', 'a write that would push a balance beyond what the app can represent exactly is refused');
 select ok((select sum(amount) from public.ledger_entries where group_id = tests.group_id('Big')) <= 9007199254740991,
           'the refused write left nothing behind');
 
@@ -115,24 +115,24 @@ select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Equal?', 1000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Flat'), tests.amounts('alice', '1000'),
          pg_temp.parts('alice', '1', '', '', 'false', 'bob', '999', '', '', 'false'), tests.debts('bob', 'alice', '999')),
-  'SM422', null, 'an "equal" split of 1 / 999 is refused');
+  'SM422', 'The shares don''t match the split method', 'an "equal" split of 1 / 999 is refused');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Half?', 1000, 'INR', current_date, 'percentage', %L, %L, %L) $$,
          tests.group_id('Flat'), tests.amounts('alice', '1000'),
          pg_temp.parts('alice', '1', 'basis_points', '5000', 'false', 'bob', '999', 'basis_points', '5000', 'false'),
          tests.debts('bob', 'alice', '999')),
-  'SM422', null, 'a 50% / 50% split that charges 0.1% / 99.9% is refused');
+  'SM422', 'The shares don''t match the split method', 'a 50% / 50% split that charges 0.1% / 99.9% is refused');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Shares?', 1000, 'INR', current_date, 'shares', %L, %L, %L) $$,
          tests.group_id('Flat'), tests.amounts('alice', '1000'),
          pg_temp.parts('alice', '1', 'weight', '1', 'false', 'bob', '999', 'weight', '1', 'false'),
          tests.debts('bob', 'alice', '999')),
-  'SM422', null, 'one share each that charges 1 / 999 is refused');
+  'SM422', 'The shares don''t match the split method', 'one share each that charges 1 / 999 is refused');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Flags?', 900, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Flat'), tests.amounts('alice', '900'),
          pg_temp.parts('alice', '450', '', '', 'true', 'bob', '450', '', '', 'false'), tests.debts('bob', 'alice', '450')),
-  'SM422', null, 'a rounding-unit flag on an even split is refused');
+  'SM422', 'The shares don''t match the split method', 'a rounding-unit flag on an even split is refused');
 select lives_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'Fine', 1000, 'INR', current_date, 'equal', %L, %L, %L) $$,
          tests.group_id('Flat'), tests.amounts('alice', '1000'),
@@ -146,7 +146,7 @@ select throws_ok(
          pg_temp.parts('alice', '0', '', '', 'false', 'bob', '1000', '', '', 'false'), tests.debts('bob', 'alice', '1000'),
          jsonb_build_array(jsonb_build_object('name', 'Pizza', 'kind', 'item', 'amount', 1000,
                                               'assignments', jsonb_build_array(jsonb_build_object('user_id', tests.uid('alice')))))),
-  'SM422', null, 'an itemized share for an item assigned only to someone else is refused');
+  'SM422', 'The shares don''t match the split method', 'an itemized share for an item assigned only to someone else is refused');
 select is((select count(*)::int from public.expenses where description in ('Equal?', 'Half?', 'Shares?', 'Flags?', 'Pizza?')), 0,
           'none of the contradicting expenses was saved');
 
@@ -239,7 +239,7 @@ select tests.authenticate_as('bob');
 select public.create_invitation(tests.group_id('Flat'), 'yan@tests.local');
 
 select tests.authenticate_as('carol');
-select throws_ok($$ select invited_email from public.group_invitations $$, '42501', null,
+select throws_ok($$ select invited_email from public.group_invitations $$, '42501', 'permission denied for table group_invitations',
                  'a member can''t read invitees'' email addresses from the table');
 select set_eq(format($$ select invited_email from public.group_invitation_list(%L) $$, tests.group_id('Flat')),
               $$ values ('z•••@tests.local'), ('y•••@tests.local') $$,
@@ -263,7 +263,7 @@ select is((select count(*)::int from public.group_invitation_list(tests.group_id
 -- ---------------------------------------------------------------- L10: group settings only through update_group
 select tests.authenticate_as('alice');
 select throws_ok(format($$ update public.groups set name = 'Sneaky', archived_at = now() where id = %L $$, tests.group_id('Flat')),
-                 '42501', null, 'an admin can''t update the group row directly (no audit, no validation)');
+                 '42501', 'permission denied for table groups', 'an admin can''t update the group row directly (no audit, no validation)');
 select lives_ok(format($$ select public.update_group(%L, 'Flat renamed', '', 'INR', 'home', true) $$, tests.group_id('Flat')),
                 'update_group still works, audited');
 

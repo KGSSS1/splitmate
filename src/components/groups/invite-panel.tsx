@@ -44,11 +44,14 @@ function LinkInvite({ groupId }: { groupId: string }) {
   function create() {
     setResult(null);
     startTransition(async () => {
+      let next: ActionResult<CreatedInvite>;
       try {
-        setResult(await createInviteLink({ groupId, expiresInDays }));
+        next = await createInviteLink({ groupId, expiresInDays });
       } catch {
-        setResult({ ok: false, error: "Couldn't reach the server. Check your connection and try again." });
+        next = { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
       }
+      // Commit the result with the re-enabled button (review M17).
+      startTransition(() => setResult(next));
     });
   }
 

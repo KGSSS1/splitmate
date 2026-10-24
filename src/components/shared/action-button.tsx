@@ -45,9 +45,12 @@ export function ActionButton({
       } catch {
         result = { ok: false, error: NETWORK_ERROR };
       }
-      // A redirecting action resolves without a result.
-      if (result && !result.ok) setError(result.error);
-      setConfirming(false);
+      // A redirecting action resolves without a result. Wrapped again so the
+      // error and the re-enabled button commit together (review M17).
+      startTransition(() => {
+        if (result && !result.ok) setError(result.error);
+        setConfirming(false);
+      });
     });
   }
 

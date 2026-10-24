@@ -43,13 +43,13 @@ select is((select use_count from public.group_invitations where id = (select inv
 select tests.authenticate_as('dave');
 select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from inv_single)),
                  'SM409', 'This invitation has already been used', 'a single-use token cannot be reused');
-select throws_ok($$ select public.accept_invitation('not-a-real-token') $$, 'SM404', null, 'an unknown token is rejected');
+select throws_ok($$ select public.accept_invitation('not-a-real-token') $$, 'SM404', 'Invitation not found', 'an unknown token is rejected');
 select throws_ok(format($$ select public.accept_invitation(%L, null, %L) $$, (select token from inv_multi), tests.group_id('Other')),
                  'SM403', 'This invitation is for a different group', 'a token cannot be used for another group');
 select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from inv_email)),
-                 'SM403', null, 'an invitation sent to an email cannot be used by someone else');
+                 'SM403', 'This invitation was sent to a different email address', 'an invitation sent to an email cannot be used by someone else');
 select throws_ok(format($$ select public.accept_invitation(null, %L) $$, (select invitation_id from inv_single)),
-                 'SM404', null, 'accepting by ID only works for an invitation addressed to you');
+                 'SM404', 'Invitation not found', 'accepting by ID only works for an invitation addressed to you');
 
 reset role;
 update public.group_invitations set expires_at = now() - interval '1 minute'
@@ -61,7 +61,7 @@ select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token
 -- ---------------------------------------------------------------- revoke
 select tests.authenticate_as('bob');
 select throws_ok(format($$ select public.revoke_invitation(%L) $$, (select invitation_id from inv_revoked)),
-                 'SM403', null, 'a member who did not create the invitation cannot revoke it');
+                 'SM403', 'Only the person who created the invitation or an admin can revoke it', 'a member who did not create the invitation cannot revoke it');
 select tests.authenticate_as('alice');
 select lives_ok(format($$ select public.revoke_invitation(%L) $$, (select invitation_id from inv_revoked)),
                 'the creator revokes the invitation');
@@ -69,7 +69,7 @@ select tests.authenticate_as('dave');
 select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from inv_revoked)),
                  'SM409', 'This invitation has been revoked', 'a revoked token is rejected');
 select throws_ok(format($$ select public.revoke_invitation(%L) $$, (select invitation_id from inv_multi)),
-                 'SM404', null, 'a non-member cannot revoke (or even find) an invitation');
+                 'SM404', 'Invitation not found', 'a non-member cannot revoke (or even find) an invitation');
 
 select tests.authenticate_as('bob');
 create temp table inv_bob as select * from public.create_invitation(tests.group_id('Main'));
@@ -99,14 +99,14 @@ select is((select use_count from public.group_invitations where id = (select inv
 
 -- ---------------------------------------------------------------- creation rules
 select tests.authenticate_as('erin');
-select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('Main')), 'SM403', null,
+select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('Main')), 'SM403', 'You are not a member of this group',
                  'a non-member cannot create invitations');
-select throws_ok(format($$ select public.create_invitation(%L, null, 0) $$, tests.group_id('Other')), 'SM422', null,
+select throws_ok(format($$ select public.create_invitation(%L, null, 0) $$, tests.group_id('Other')), 'SM422', 'An invitation can be used 1–100 times',
                  'max uses must be at least 1');
 select lives_ok(format($$ select count(*) from (select public.create_invitation(%L) from generate_series(1, 20)) x $$,
                        tests.group_id('Other')),
                 'up to 20 invitations per hour are allowed');
-select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('Other')), 'SM429', null,
+select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('Other')), 'SM429', 'Too many invitations; try again later',
                  'the 21st invitation within an hour is rate limited');
 
 reset role;

@@ -22,6 +22,13 @@ test.describe.configure({ timeout: 300_000 });
 const EXPENSE_URL = /\/expenses\/([0-9a-f-]{36})\?saved=created$/;
 const SETTLEMENT_URL = /\/settlements\/([0-9a-f-]{36})\?saved=(paid|received)$/;
 
+async function setSimplifyDebts(page: Page, groupId: string, on: boolean) {
+  await page.goto(`/groups/${groupId}/settings`);
+  await page.getByRole("checkbox", { name: "Simplify debts" }).setChecked(on);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Group settings saved.")).toBeVisible(NAVIGATION);
+}
+
 async function expectNet(page: Page, net: string) {
   await page.goto("/dashboard");
   await expect(page.getByRole("group", { name: "Net balance" })).toContainText(net);
@@ -278,10 +285,7 @@ test("settle up everything with a friend; the friend rejects one part; a complet
   await expect(page.getByRole("link", { name: new RegExp(bina) })).toContainText("owes you ₹200.00");
 
   // With simplify-debts off, the Balances tab no longer says "simplified".
-  await page.goto(`/groups/${groupId}/settings`);
-  await page.getByRole("checkbox", { name: "Simplify debts" }).uncheck();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Group settings saved.")).toBeVisible(NAVIGATION);
+  await setSimplifyDebts(page, groupId, false);
   await page.goto(`/groups/${groupId}/balances`);
   await expect(page.getByRole("heading", { name: "Suggested repayments" })).toBeVisible();
   await expect(page.getByText("Simplified", { exact: true }).filter({ visible: true })).toHaveCount(0);
@@ -327,6 +331,21 @@ test("friend balances follow the group's simplified plan", async ({ page, browse
   await expect(binaPage.getByRole("list", { name: "Balance by group" })).toContainText(
     `${groupName} (simplified): you owe ₹200.00`,
   );
+
+  // Review M14: here the plan and the raw debts differ, so the toggle shows. On: the plan.
+  const suggestions = page.getByRole("list", { name: "Suggested repayments" }).getByRole("listitem");
+  await page.goto(`/groups/${groupId}/balances`);
+  await expect(suggestions).toHaveCount(2);
+  await expect(suggestions.filter({ hasText: `${bina} pays you ₹200.00` })).toHaveCount(1);
+  await expect(suggestions.filter({ hasText: `${bina} pays ${chetan} ₹200.00` })).toHaveCount(1);
+  // Off: who owes whom directly.
+  await setSimplifyDebts(page, groupId, false);
+  await page.goto(`/groups/${groupId}/balances`);
+  await expect(suggestions).toHaveCount(3);
+  await expect(suggestions.filter({ hasText: `${bina} pays you ₹100.00` })).toHaveCount(1);
+  await expect(suggestions.filter({ hasText: `${bina} pays ${chetan} ₹300.00` })).toHaveCount(1);
+  await expect(suggestions.filter({ hasText: `${chetan} pays you ₹100.00` })).toHaveCount(1);
+  await setSimplifyDebts(page, groupId, true);
 
   // Asha records Bina's ₹200 (settle up everything) and Chetan records his: the group is settled
   // and nobody's dashboard shows anything owed.

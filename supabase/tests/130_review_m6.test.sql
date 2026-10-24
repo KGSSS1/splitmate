@@ -28,7 +28,7 @@ select public.leave_group(tests.group_id('Flat'));
 
 select tests.authenticate_as('mallory');
 select throws_ok(format($$ select public.accept_invitation(%L) $$, (select token from old_link)),
-                 'SM403', null, 'a removed member cannot rejoin with a link created before the removal');
+                 'SM403', 'You were removed from this group. Ask a member for a new invitation', 'a removed member cannot rejoin with a link created before the removal');
 reset role;
 select ok((select removed_by is not null and left_at is not null from public.group_members
             where group_id = tests.group_id('Flat') and user_id = tests.uid('mallory')),

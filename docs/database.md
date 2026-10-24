@@ -185,5 +185,6 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `120_balances_settle_up` | The M6 balance read functions (including outsiders seeing nothing), "settle up everything" (statuses, idempotent retry, skipped groups, notifications), settlement input checks, privileges |
 | `130_review_m6` | Review M6 Highs: a removed member can't rejoin through an older link; `my_activity` visibility and cost |
 | `140_review_batch1` | Review batch 1: `withdrawn`, one open payment per debt, per-currency maximum and balance range, split-detail checks, history and empty saves, neutral friend requests, former members and group names, no direct group updates, masked invitee addresses |
+| `150_review_batch2` | Review batch 2: idempotency keys scoped to their creator (expenses, settlements, settle-up batches); pairwise balances net debts in both directions |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

@@ -93,6 +93,19 @@ describe("suggestedTransfers (SPEC §7)", () => {
     expect(transfersInvolving(transfers, "c")).toEqual([{ fromUserId: "c", toUserId: "a", amount: 30000, currency: "INR" }]);
     expect(transfersInvolving(transfers, "z")).toEqual([]);
   });
+
+  // Review L40: the receiver sees what they can record as received.
+  it("transfersInvolving includes the payments coming to the viewer", () => {
+    const raw = suggestedTransfers({ simplify: false, nets, pairwise });
+    expect(transfersInvolving(raw, "a")).toEqual([
+      { fromUserId: "b", toUserId: "a", amount: 30000, currency: "INR" },
+      { fromUserId: "c", toUserId: "a", amount: 30000, currency: "INR" },
+      { fromUserId: "a", toUserId: "b", amount: 20000, currency: "INR" },
+    ]);
+    const simplified = suggestedTransfers({ simplify: true, nets, pairwise });
+    expect(transfersInvolving(simplified, "a").every((transfer) => transfer.toUserId === "a")).toBe(true);
+    expect(transfersInvolving(simplified, "a").reduce((sum, transfer) => sum + transfer.amount, 0)).toBe(40000);
+  });
 });
 
 describe("availableSettlementActions", () => {
