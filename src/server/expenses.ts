@@ -247,7 +247,7 @@ export async function getExpense(expenseId: string): Promise<ExpenseDetail | nul
  * `private.can_edit_expense` (comments) so the page only offers actions the
  * database will accept. The database checks them again anyway.
  */
-async function changePermission(
+export async function changePermission(
   supabase: Client,
   userId: string,
   expense: { status: string; group_id: string | null },
@@ -258,13 +258,15 @@ async function changePermission(
   if (!expense.group_id) {
     const other = involved.find((id) => id !== userId);
     if (!other || !involved.includes(userId)) return denied("Only the two friends involved can change it.");
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("friendships")
       .select("id")
       .eq("user_low", userId < other ? userId : other)
       .eq("user_high", userId < other ? other : userId)
       .eq("status", "accepted")
       .maybeSingle();
+    // A failed read isn't "no longer friends" (review L26).
+    if (error) throw new Error("Could not load this expense.");
     if (!data) return denied("You're no longer friends.");
     if (expense.status !== "active") return denied("This expense was cancelled.", true);
     return { canChange: true, canComment: true, lockedReason: null };

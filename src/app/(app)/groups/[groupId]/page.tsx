@@ -5,11 +5,13 @@ import { notFound } from "next/navigation";
 
 import { ExpenseList } from "@/components/expenses/expense-list";
 import { FormStatus } from "@/components/forms/form-status";
+import { RedirectNotice } from "@/components/forms/redirect-notice";
 import { GroupHeader } from "@/components/groups/group-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pager } from "@/components/shared/pager";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
+import { emptyExpensesText } from "@/lib/groups/copy";
 import { cn } from "@/lib/utils";
 import { expensePageSchema } from "@/lib/validation/expenses";
 import { uuidSchema } from "@/lib/validation/groups";
@@ -36,7 +38,7 @@ export default async function GroupExpensesPage({ params, searchParams }: PagePr
   return (
     <div className="grid max-w-3xl gap-6">
       <GroupHeader group={view.group} showTabs={isMember} />
-      {query.joined === "1" && isMember ? <FormStatus success={`You joined ${view.group.name}.`} /> : null}
+      {query.joined === "1" && isMember ? <RedirectNotice param="joined" message={`You joined ${view.group.name}.`} /> : null}
       {!isMember ? (
         <FormStatus error="You're no longer a member of this group. You can still see the expenses you were part of." />
       ) : null}
@@ -58,7 +60,7 @@ export default async function GroupExpensesPage({ params, searchParams }: PagePr
 
       {expenses.items.length === 0 ? (
         <EmptyState icon={ReceiptText} title="No expenses yet">
-          <p>Add the first expense to see who owes whom.</p>
+          <p>{emptyExpensesText(isMember)}</p>
         </EmptyState>
       ) : (
         <ExpenseList items={expenses.items} label="Group expenses" />

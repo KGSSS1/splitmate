@@ -151,6 +151,40 @@ describe("ExpenseForm", () => {
     expect(preview().getAllByText("₹330.00")).toHaveLength(2);
   });
 
+  // Review L22 / L28: a visible "Shares" label, and one short live summary instead
+  // of re-announcing the whole preview on every keystroke.
+  it("labels the shares and announces only a one-line summary", async () => {
+    const user = renderForm();
+    const region = screen.getByRole("region", { name: "Preview" });
+    expect(region).not.toHaveAttribute("aria-live");
+    await user.type(screen.getByLabelText("Amount"), "900");
+    expect(preview().getByRole("heading", { name: "Shares" })).toBeVisible();
+    const live = region.querySelectorAll("[aria-live]");
+    expect(live).toHaveLength(1);
+    expect(live[0]).toHaveTextContent(/^Total ₹900\.00, split between 3 people\.$/);
+    expect(region.querySelector('[role="status"], [role="alert"]')).toBeNull();
+  });
+
+  // Review L32: "0.00" is the wrong hint for currencies with 0 or 3 decimals.
+  it("shows an amount placeholder with the currency's decimals", async () => {
+    const user = renderForm();
+    expect(screen.getByLabelText("Amount")).toHaveAttribute("placeholder", "0.00");
+    await user.selectOptions(screen.getByLabelText("Currency"), "JPY");
+    expect(screen.getByLabelText("Amount")).toHaveAttribute("placeholder", "0");
+    await user.selectOptions(screen.getByLabelText("Currency"), "KWD");
+    expect(screen.getByLabelText("Amount")).toHaveAttribute("placeholder", "0.000");
+  });
+
+  // Review L19: the chosen split method was shown by colour alone.
+  it("marks the chosen split method with a check, not just colour", async () => {
+    const user = renderForm();
+    const pill = (name: string) => screen.getByRole("radio", { name }).closest("label");
+    expect(pill("Equally")?.querySelector("[data-checked-indicator]")).not.toBeNull();
+    await user.click(screen.getByRole("radio", { name: "By item" }));
+    expect(pill("By item")?.querySelector("[data-checked-indicator]")).not.toBeNull();
+    expect(pill("Equally")?.querySelector("[data-checked-indicator]")).toBeNull();
+  });
+
   it("checks the description on submit and sends nothing until it is fixed", async () => {
     const user = renderForm();
     await user.type(screen.getByLabelText("Amount"), "900");

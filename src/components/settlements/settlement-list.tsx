@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { ROUTES } from "@/lib/auth/routes";
 import { formatExpenseDate } from "@/lib/expenses/dates";
 import { formatMoney } from "@/lib/money/format";
@@ -45,7 +46,7 @@ export function SettlementList({
           <li key={item.id} className="grid">
             <Link
               href={`${ROUTES.settlements}/${item.id}`}
-              className="flex min-h-16 items-center gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+              className={cn("flex min-h-16 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
             >
               <span className="w-14 shrink-0 text-xs text-muted-foreground">{formatExpenseDate(item.settledOn)}</span>
               <span className="min-w-0 flex-1">

@@ -80,6 +80,18 @@ const baseExpenseSchema = z.object({
  * accounting module and every problem is reported at its field.
  */
 export const expenseFormSchema = baseExpenseSchema.superRefine((values, context) => {
+  // The form never lists anyone twice; a crafted payload would make the
+  // accounting module throw (review L3), so report it instead.
+  const duplicated = (ids: readonly string[]) => new Set(ids).size !== ids.length;
+  if (duplicated(values.people.map((person) => person.userId))) {
+    context.addIssue({ code: "custom", path: ["people"], message: "Each person can appear only once." });
+    return;
+  }
+  const itemIndex = values.items.findIndex((item) => duplicated(item.assignees));
+  if (itemIndex >= 0) {
+    context.addIssue({ code: "custom", path: ["items", itemIndex], message: "Each person can appear only once." });
+    return;
+  }
   const result = resolveExpense(values as ExpenseFormValues);
   if (!result.ok) {
     for (const issue of result.issues) {

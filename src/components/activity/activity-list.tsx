@@ -1,6 +1,7 @@
 import { HandCoins, ReceiptText } from "lucide-react";
 import Link from "next/link";
 
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { ROUTES } from "@/lib/auth/routes";
 import { formatTimestamp } from "@/lib/expenses/dates";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ export function ActivityList({
           <li key={item.id}>
             <Link
               href={href}
-              className="flex min-h-16 items-start gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+              className={cn("flex min-h-16 items-start gap-3 px-4 py-3", ROW_LINK_CLASS)}
             >
               <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
                 <Icon aria-hidden className="size-4 text-muted-foreground" />

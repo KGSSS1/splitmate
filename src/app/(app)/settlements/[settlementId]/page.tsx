@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { FormStatus } from "@/components/forms/form-status";
+import { RedirectNotice } from "@/components/forms/redirect-notice";
 import { SettlementActions } from "@/components/settlements/settlement-actions";
 import { settlementSentence } from "@/components/settlements/settlement-list";
 import { SettlementStatusBadge } from "@/components/settlements/settlement-status-badge";
@@ -56,14 +56,17 @@ export default async function SettlementPage({ params, searchParams }: PageProps
         <ArrowLeft aria-hidden className="size-4" />
         {settlement.groupId ? "Group balances" : "All settlements"}
       </Link>
-      {saved ? <FormStatus success={saved} /> : null}
+      {saved ? <RedirectNotice param="saved" message={saved} /> : null}
 
       <header className="grid gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <SettlementStatusBadge status={settlement.status} />
           <span className="text-sm text-muted-foreground">
             {settlement.groupId ? (
-              <Link href={`${ROUTES.groups}/${settlement.groupId}`} className="underline">
+              <Link
+                href={`${ROUTES.groups}/${settlement.groupId}`}
+                className="inline-flex min-h-11 items-center underline md:min-h-0"
+              >
                 {settlement.groupName ?? "Group"}
               </Link>
             ) : (

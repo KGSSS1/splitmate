@@ -21,9 +21,20 @@ export function SplitPreview({
   const total = result.ok ? result.expense.total : result.total;
   const format = (amount: number) => formatMoney(amount, currency);
   const anyRounding = shares?.some((share) => share.roundingUnit === 1) ?? false;
+  const people = result.ok ? result.expense.shares.length : 0;
+  // Only this line is announced, so a screen reader isn't read the whole preview
+  // on every keystroke (review L28).
+  const summary = result.ok
+    ? `Total ${format(result.expense.total)}, split between ${people} ${people === 1 ? "person" : "people"}.`
+    : total === null
+      ? ""
+      : `Not ready to save: ${result.issues[0]?.message ?? "check the split."}`;
 
   return (
-    <section aria-labelledby="split-preview-heading" aria-live="polite" className="grid gap-4">
+    <section aria-labelledby="split-preview-heading" className="grid gap-4">
+      <p aria-live="polite" className="sr-only">
+        {summary}
+      </p>
       <div className="flex items-baseline justify-between gap-3">
         <h2 id="split-preview-heading" className="font-semibold">
           Preview
@@ -36,24 +47,31 @@ export function SplitPreview({
       </div>
 
       {shares && shares.length > 0 ? (
-        <ul className="grid gap-1.5" aria-label="Shares">
-          {shares.map((share) => (
-            <li key={share.userId} className="flex items-center justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate">{nameOf(share.userId)}</span>
-              <span className="flex items-center gap-1.5 tabular-nums">
-                {share.roundingUnit === 1 ? (
-                  <span
-                    title="Received a rounding unit"
-                    className="inline-flex items-center rounded-full bg-muted px-1.5 text-[0.7rem] text-muted-foreground"
-                  >
-                    +1<span className="sr-only"> rounding unit</span>
-                  </span>
-                ) : null}
-                {format(share.amount)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="grid gap-1.5">
+          {/* Labelled, so a share isn't mistaken for what someone paid (review L22). */}
+          <h3 id="split-preview-shares" className="text-sm font-medium">
+            Shares
+          </h3>
+          <p className="text-xs text-muted-foreground">Each person&apos;s part of the total, whoever paid it.</p>
+          <ul className="grid gap-1.5" aria-labelledby="split-preview-shares">
+            {shares.map((share) => (
+              <li key={share.userId} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">{nameOf(share.userId)}</span>
+                <span className="flex items-center gap-1.5 tabular-nums">
+                  {share.roundingUnit === 1 ? (
+                    <span
+                      title="Received a rounding unit"
+                      className="inline-flex items-center rounded-full bg-muted px-1.5 text-[0.7rem] text-muted-foreground"
+                    >
+                      +1<span className="sr-only"> rounding unit</span>
+                    </span>
+                  ) : null}
+                  {format(share.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
         <p className="text-sm text-muted-foreground">
           {total === null
@@ -81,7 +99,7 @@ export function SplitPreview({
       ) : null}
 
       {!result.ok ? (
-        <div role="status" className="grid gap-1.5 rounded-lg border border-destructive/30 p-3 text-sm">
+        <div className="grid gap-1.5 rounded-lg border border-destructive/30 p-3 text-sm">
           <p className="flex items-center gap-2 font-medium">
             <CircleAlert aria-hidden className="size-4 text-destructive" />
             Before you can save

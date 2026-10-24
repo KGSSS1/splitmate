@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 
 const STYLES: Record<SettlementStatus, string> = {
   pending: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
-  completed: "bg-primary/10 text-primary",
-  rejected: "bg-destructive/10 text-destructive",
+  completed: "bg-primary/10 text-primary-emphasis",
+  rejected: "bg-destructive/10 text-destructive-emphasis",
   withdrawn: "bg-muted text-muted-foreground",
   cancelled: "bg-muted text-muted-foreground",
 };

@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { authErrorMessage } from "@/lib/auth/errors";
@@ -110,6 +111,14 @@ export async function updatePassword(input: unknown): Promise<ActionResult> {
 export async function signOut(): Promise<void> {
   const supabase = await createClient();
   // "local" ends this browser's session only; other devices stay signed in.
-  await supabase.auth.signOut({ scope: "local" });
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) {
+    // Supabase Auth couldn't be reached, so the session wasn't cleared. Drop its
+    // cookies anyway: logging out must work in this browser (review L26).
+    const store = await cookies();
+    for (const { name } of store.getAll()) {
+      if (name.startsWith("sb-")) store.delete(name);
+    }
+  }
   redirect(ROUTES.login);
 }

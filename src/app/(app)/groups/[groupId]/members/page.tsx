@@ -147,7 +147,7 @@ function MemberRow({
           {member.displayName}
           {isMe ? <span className="text-muted-foreground"> (you)</span> : null}
           {member.role === "admin" ? (
-            <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Admin</span>
+            <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-emphasis">Admin</span>
           ) : null}
         </p>
         <BalanceText balances={member.balances} perspective={isMe ? "self" : "member"} />

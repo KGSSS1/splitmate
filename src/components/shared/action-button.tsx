@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
-import { type ReactNode, useId, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,8 @@ type Variant = "default" | "outline" | "secondary" | "ghost" | "destructive";
 /**
  * A button that runs one bound Server Action, stays disabled while it runs and
  * shows the server's error next to it. With `confirm`, the first click asks
- * for confirmation inline (no modal) before anything is sent.
+ * for confirmation inline (no modal) before anything is sent. Focus moves to
+ * the confirm button and back, since the focused button is replaced (L27).
  */
 export function ActionButton({
   action,
@@ -35,6 +36,19 @@ export function ActionButton({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const asked = useRef(false);
+
+  useEffect(() => {
+    if (confirming) {
+      asked.current = true;
+      confirmRef.current?.focus();
+    } else if (asked.current) {
+      asked.current = false;
+      triggerRef.current?.focus();
+    }
+  }, [confirming]);
 
   function run() {
     setError(null);
@@ -63,6 +77,7 @@ export function ActionButton({
           <p className="text-sm">{confirm}</p>
           <div className="flex flex-wrap gap-2">
             <Button
+              ref={confirmRef}
               type="button"
               variant={variant === "destructive" ? "destructive" : "default"}
               className={buttonClass}
@@ -80,12 +95,14 @@ export function ActionButton({
               disabled={pending}
               onClick={() => setConfirming(false)}
             >
-              Cancel
+              {/* Not "Cancel": it sits next to labels like "Cancel expense" (L18). */}
+              Keep it
             </Button>
           </div>
         </div>
       ) : (
         <Button
+          ref={triggerRef}
           type="button"
           variant={variant}
           className={buttonClass}

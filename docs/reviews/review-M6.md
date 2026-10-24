@@ -183,6 +183,29 @@ Also fixed in passing:
 - Cancelling a pending payment now says "Payment withdrawn. Balances are unchanged." instead of "Settlement cancelled." (batch 1 left the old message).
 - `SubmitButton` stays disabled until hydration. A click before then made the browser GET the page with the form's values in the URL and saved nothing. The new M14 E2E step hit this once; `submit-button.test.tsx` failed on the old code.
 
+### Batch 3: polish and accessibility
+
+Each fix has a test that failed first. axe now runs in the E2E suite (`tests/e2e/accessibility.spec.ts`, `@axe-core/playwright`, WCAG 2.2 AA plus best practices) on 17 app pages in light and dark, on desktop and Pixel 7. It reports no violations.
+
+| ID | Fix | Tests |
+| --- | --- | --- |
+| M7 | `ROW_LINK_CLASS` (`src/components/shared/row-link.ts`): an inset 2 px ring on keyboard focus for every list-row link (groups, expenses, friends, settlements, activity, dashboard, settle-up). | E2E "list rows show where keyboard focus is" (6 lists) |
+| M8 | Light theme: `--muted-foreground` darkened to `oklch(0.5 0 0)` (AA on `--muted` too). New `--primary-emphasis` / `--destructive-emphasis` for text on 10 % tints: status badges, "Admin", "Simplified", the selected split pill, initials, destructive buttons. Dark theme unchanged. | E2E axe, light and dark |
+| M11 | 44 px on phones: menu trigger, dashboard "All …" links, theme picker, "Change password" / "Log out", "Notes and tags", the settlement's group link. Desktop sizes unchanged from `md`. | E2E "touch targets are at least 44 px on phones" |
+| L3 | The expense schema reports a person listed twice (or an item assigned twice) as a field error; it used to throw inside the Server Action, or was silently accepted for items. | `tests/unit/validation/expenses.test.ts` |
+| L16 | A former member's empty group says "There are no expenses here that you were part of." | `tests/unit/groups/copy.test.ts` |
+| L17 | `RedirectNotice` drops `?saved=` / `?joined=` from the URL at the first click or key press, so a later refresh doesn't repeat the banner. | `redirect-notice.test.tsx`; E2E expense flow (comment after saving) |
+| L18 | The confirmation's way out says "Keep it". | `action-button.test.tsx` |
+| L19 | A check mark on the chosen split method; an indicator bar on the current nav item (sidebar and bottom bar). | `expense-form.test.tsx`, `tests/unit/layout/app-nav.test.tsx` |
+| L20 | Non-admins read "A group admin can turn on Simplify debts …". | `copy.test.ts` |
+| L22 | The preview labels the list "Shares" ("Each person's part of the total, whoever paid it"). | `expense-form.test.tsx` |
+| L24 | The adjustment selects take the full width on phones. | E2E "the itemized form fits a 375 px phone" |
+| L26 | `changePermission` throws on a failed friendship read instead of saying "You're no longer friends". When Supabase Auth can't be reached, `signOut` still drops this browser's `sb-` cookies. | `tests/unit/server/error-handling.test.ts` |
+| L27 | Focus moves to the confirm button when a confirmation opens and back to the trigger when it closes. | `action-button.test.tsx` |
+| L28 | One screen-reader-only live line ("Total ₹900.00, split between 3 people.") replaces the live preview. | `expense-form.test.tsx` |
+| L29 | `src/app/(app)/not-found.tsx` renders inside the app shell without its own `<main>`. | E2E axe (`/groups/not-a-group/balances`) |
+| L32 | Amount placeholders follow the currency's decimals (`0`, `0.00`, `0.000`). | `expense-form.test.tsx` |
+
 ## Medium (as reported; see the batches above for what was decided and fixed)
 
 | ID | Finding | Where | Reproduce | Recommendation |

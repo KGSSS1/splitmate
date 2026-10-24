@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import {
   type Control,
@@ -35,7 +35,8 @@ import {
   type SplitMethod,
 } from "@/lib/expenses/options";
 import { type ExpenseFormValues, type ExpenseIssue, MULTIPLE_PAYERS, resolveExpense } from "@/lib/expenses/resolve";
-import { formatMoney } from "@/lib/money/format";
+import { isCurrencyCode } from "@/lib/money/currencies";
+import { formatMoney, minorToDecimalString } from "@/lib/money/format";
 import { CURRENCY_OPTIONS } from "@/lib/profile/options";
 import { cn } from "@/lib/utils";
 import { expenseFormSchema, parseSplitWith } from "@/lib/validation/expenses";
@@ -147,6 +148,8 @@ export function ExpenseForm({
   ];
   const currency = values.currency;
   const format = (amount: number) => formatMoney(amount, currency);
+  // "0", "0.00" or "0.000": the currency's own decimals (review L32).
+  const amountHint = isCurrencyCode(currency) ? minorToDecimalString(0, currency) : "0.00";
 
   return (
     <form
@@ -195,7 +198,7 @@ export function ExpenseForm({
                   label="Amount"
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="0.00"
+                  placeholder={amountHint}
                   className="tabular-nums"
                   defaultValue={defaultValues.amount}
                   error={fieldError("amount")}
@@ -263,12 +266,16 @@ export function ExpenseForm({
                   <label
                     key={method}
                     className={cn(
-                      "inline-flex min-h-11 cursor-pointer items-center rounded-full border px-3 text-sm md:min-h-8",
-                      "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary",
+                      "inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm md:min-h-8",
+                      "has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary-emphasis",
                       "has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
                     )}
                   >
                     <input type="radio" value={method} className="sr-only" {...register("splitMethod")} />
+                    {/* A check, not just colour, marks the choice (review L19). */}
+                    {values.splitMethod === method ? (
+                      <Check aria-hidden data-checked-indicator className="size-4" />
+                    ) : null}
                     {SPLIT_METHOD_LABELS[method]}
                   </label>
                 ))}
@@ -277,6 +284,7 @@ export function ExpenseForm({
 
             {values.splitMethod === "itemized" ? (
               <ItemizedEditor
+                amountHint={amountHint}
                 control={control}
                 register={register}
                 people={people}
@@ -299,8 +307,8 @@ export function ExpenseForm({
           </CardContent>
         </Card>
 
-        <details className="group rounded-xl border px-4 py-3 open:pb-4">
-          <summary className="min-h-8 cursor-pointer text-sm font-medium">Notes and tags</summary>
+        <details className="group rounded-xl border px-4 open:pb-4 md:py-1.5">
+          <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium md:min-h-8 md:py-1.5">Notes and tags</summary>
           <div className="mt-4 grid gap-4">
             <Textarea
               label="Notes"
@@ -386,6 +394,7 @@ function PeopleSplit({
 }
 
 function ItemizedEditor({
+  amountHint,
   control,
   register,
   people,
@@ -394,6 +403,7 @@ function ItemizedEditor({
   issues,
   errors,
 }: {
+  amountHint: string;
   control: Control<Values>;
   register: UseFormRegister<Values>;
   people: ExpensePerson[];
@@ -425,7 +435,7 @@ function ItemizedEditor({
                   label={`Item ${index + 1} amount`}
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="0.00"
+                  placeholder={amountHint}
                   error={fieldError(`items.${index}.amount`)}
                   {...register(`items.${index}.amount`)}
                 />
@@ -499,8 +509,12 @@ function ItemizedEditor({
         </p>
         <ul className="grid gap-3" aria-label="Tax, service, tip and discounts">
           {adjustments.fields.map((adjustment, index) => (
-            <li key={adjustment.id} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-start gap-2">
-              <div className="grid gap-2 sm:grid-cols-2">
+            <li
+              key={adjustment.id}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]"
+            >
+              {/* Full width on phones so "Proportionally" fits (review L24). */}
+              <div className="col-span-2 grid gap-2 sm:col-span-1 sm:grid-cols-2">
                 <NativeSelect
                   label={`Line ${index + 1} type`}
                   options={ADJUSTMENT_KINDS.map((kind) => ({ value: kind, label: ADJUSTMENT_LABELS[kind] }))}
@@ -519,7 +533,7 @@ function ItemizedEditor({
                 label={`Line ${index + 1} amount`}
                 inputMode="decimal"
                 autoComplete="off"
-                placeholder="0.00"
+                placeholder={amountHint}
                 error={fieldError(`adjustments.${index}.amount`)}
                 {...register(`adjustments.${index}.amount`)}
               />

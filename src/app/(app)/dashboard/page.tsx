@@ -9,6 +9,7 @@ import { GroupTypeIcon } from "@/components/groups/group-type-icon";
 import { SettlementList } from "@/components/settlements/settlement-list";
 import { BalanceText } from "@/components/shared/balance-text";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
 import { cn } from "@/lib/utils";
@@ -99,7 +100,7 @@ export default async function DashboardPage() {
                 <li key={person.personId}>
                   <Link
                     href={`${ROUTES.friends}/${person.personId}`}
-                    className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-muted/50"
+                    className={cn("flex min-h-14 items-center justify-between gap-3 px-4 py-3", ROW_LINK_CLASS)}
                   >
                     <span className="min-w-0 truncate font-medium">{person.displayName}</span>
                     <BalanceText balances={person.balances} perspective="friend" className="text-right" />
@@ -119,7 +120,7 @@ export default async function DashboardPage() {
                 <li key={group.id}>
                   <Link
                     href={`${ROUTES.groups}/${group.id}/balances`}
-                    className="flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-muted/50"
+                    className={cn("flex min-h-14 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
                   >
                     <GroupTypeIcon type={group.groupType} className="size-8" />
                     <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
@@ -191,7 +192,10 @@ function Section({
         <h2 id={`${id}-heading`} className="text-lg font-semibold">
           {title}
         </h2>
-        <Link href={more.href} className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+        <Link
+          href={more.href}
+          className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline md:min-h-0"
+        >
           {more.label}
         </Link>
       </div>

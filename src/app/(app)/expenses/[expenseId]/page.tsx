@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CommentForm } from "@/components/expenses/comment-form";
-import { FormStatus } from "@/components/forms/form-status";
+import { RedirectNotice } from "@/components/forms/redirect-notice";
 import { ActionButton } from "@/components/shared/action-button";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,7 +53,7 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
         {back.label}
       </Link>
 
-      {savedMessage ? <FormStatus success={savedMessage} /> : null}
+      {savedMessage ? <RedirectNotice param="saved" message={savedMessage} /> : null}
 
       <header className="grid gap-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -61,7 +61,7 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
             {expense.description}
           </h1>
           {cancelled ? (
-            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">Cancelled</span>
+            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive-emphasis">Cancelled</span>
           ) : null}
         </div>
         <p className="text-3xl font-semibold tabular-nums">{format(expense.amount)}</p>

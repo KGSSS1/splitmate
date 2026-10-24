@@ -68,6 +68,14 @@ test("A adds ₹900 split equally (E2E step 3); an edit and a cancel are reflect
   }
   await expect(page.getByRole("list", { name: "History" })).toContainText(`${asha} added this expense`);
 
+  // Review L17: the "saved" banner belongs to the save, not to what happens next on the page.
+  await expect(page.getByText("Expense saved. Balances are updated.")).toBeVisible();
+  await field(page, "Add a comment").fill("Paid by card");
+  await page.getByRole("button", { name: "Post comment" }).click();
+  await expect(page.getByRole("list", { name: "Comments" })).toContainText("Paid by card");
+  await expect(page.getByText("Expense saved. Balances are updated.")).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/expenses/${expenseId}$`));
+
   await expectBalances(page, groupId, {
     [`${asha} (you)`]: "you are owed ₹600.00",
     [bina]: "owes ₹300.00",

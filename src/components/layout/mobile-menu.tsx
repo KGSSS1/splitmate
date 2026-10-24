@@ -29,7 +29,7 @@ export function MobileMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" aria-label="Open menu" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-lg" className="size-11" aria-label="Open menu" />}>
         <Menu aria-hidden className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

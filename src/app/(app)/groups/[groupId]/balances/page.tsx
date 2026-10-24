@@ -11,6 +11,7 @@ import { BalanceText } from "@/components/shared/balance-text";
 import { EmptyState } from "@/components/shared/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
+import { suggestionsExplanation } from "@/lib/groups/copy";
 import { cn } from "@/lib/utils";
 import { uuidSchema } from "@/lib/validation/groups";
 import { requireOnboardedProfile } from "@/server/auth";
@@ -90,13 +91,11 @@ export default async function GroupBalancesPage({ params }: PageProps<"/groups/[
               Suggested repayments
             </h2>
             {group.simplifyDebts ? (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Simplified</span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-emphasis">Simplified</span>
             ) : null}
           </div>
           <p className="text-sm text-muted-foreground">
-            {group.simplifyDebts
-              ? "Simplified: debts across the group are combined into fewer payments, so you may pay someone you never owed directly. Everyone's balance ends up the same. This is a simplified plan, not necessarily the fewest possible payments."
-              : "Who owes whom directly from the group's expenses. Turn on Simplify debts in Settings to combine them into fewer payments."}
+            {suggestionsExplanation({ simplify: group.simplifyDebts, isAdmin: view.isAdmin })}
           </p>
           <SuggestedTransfers groupId={groupId} transfers={transfers} viewerId={profile.id} nameOf={nameOf} />
         </section>

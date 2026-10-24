@@ -2,6 +2,27 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-24: Review follow-ups, batch 3 (polish and accessibility)
+
+- **Fixed:** M7, M8, M11, L3, L16, L17, L18, L19, L20, L22, L24, L26, L27, L28, L29, L32. The table is in `docs/reviews/review-M6.md` under "Batch 3".
+- **New dev dependency:** `@axe-core/playwright` 4.13.0 (exact). `tests/e2e/accessibility.spec.ts` runs axe on 17 app pages in both themes and both viewports, and checks keyboard focus on list rows, 44 px phone targets and the 375 px itemized form.
+- **Theme:**
+  - Light `--muted-foreground` is now `oklch(0.5 0 0)`.
+  - `--primary-emphasis` / `--destructive-emphasis` are for text on 10 % tints.
+  - Brand colours are unchanged.
+- **New modules:**
+  - `src/components/shared/row-link.ts`;
+  - `src/components/forms/redirect-notice.tsx`;
+  - `src/lib/groups/copy.ts`;
+  - `src/app/(app)/not-found.tsx`.
+- **Checks:**
+  - `db reset` ✓; types unchanged; lint, typecheck and build ✓; `db lint` and advisors ✓.
+  - Unit 507 ✓. Integration 25 ✓. pgTAP 476 ✓.
+  - Playwright 44/44 ✓ (`--workers=2`), including axe.
+  - In the first full run one phone test timed out waiting for "Create invite link" (the action was still pending after 5 s under load). It passed 3/3 alone, and the whole suite passed 44/44 when rerun.
+- **Not pushed yet:** batches 1–3 and migrations `20261023090000`, `20261023091000`, `20261023092000` wait for approval to go to staging.
+- **Known:** `npm audit` reports one high advisory in `body-parser`, reached via `shadcn` → `@modelcontextprotocol/sdk` → `express`. That is the shadcn CLI's MCP server, which the app never runs. It predates this work and is not fixed here.
+
 ### 2026-10-24: Review follow-ups, batch 2 (test hardening)
 
 - **Fixed:** M17, M12, M13, M14, M15, M16, L33, L34, L37, L40, L41, L42. The table is in `docs/reviews/review-M6.md` under "Batch 2". Each new test was checked against the mutation it targets.

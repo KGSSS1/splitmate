@@ -8,6 +8,7 @@ import { GroupTypeIcon } from "@/components/groups/group-type-icon";
 import { type SettleUpSuggestion, SettleUpForm } from "@/components/settlements/settle-up-form";
 import { BalanceText } from "@/components/shared/balance-text";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
 import { todayIn } from "@/lib/expenses/dates";
@@ -181,7 +182,7 @@ export default async function SettleUpPage({ searchParams }: PageProps<"/settle-
               <li key={group.id}>
                 <Link
                   href={`${ROUTES.settleUp}?group=${group.id}`}
-                  className="flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-muted/50"
+                  className={cn("flex min-h-14 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
                 >
                   <GroupTypeIcon type={group.groupType} className="size-8" />
                   <span className="min-w-0 flex-1 truncate font-medium">{group.name}</span>
@@ -205,7 +206,7 @@ export default async function SettleUpPage({ searchParams }: PageProps<"/settle-
               <li key={friend.id}>
                 <Link
                   href={`${ROUTES.settleUp}?friend=${friend.id}`}
-                  className="flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-muted/50"
+                  className={cn("flex min-h-14 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">{friend.displayName}</span>
                   <BalanceText balances={friend.balances} perspective="friend" className="text-right" />

@@ -48,7 +48,7 @@ describe("ActionButton", () => {
     expect(action).not.toHaveBeenCalled();
     expect(screen.getByText("Leave Goa trip?")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
     expect(action).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Leave" }));

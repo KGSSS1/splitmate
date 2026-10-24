@@ -19,7 +19,7 @@ export function SignOutButton({ className }: { className?: string }) {
 function SignOutSubmit({ className }: { className?: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant="outline" disabled={pending} className={cn("h-10", className)}>
+    <Button type="submit" variant="outline" disabled={pending} className={cn("h-11 md:h-9", className)}>
       {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : <LogOut aria-hidden />}
       Log out
     </Button>

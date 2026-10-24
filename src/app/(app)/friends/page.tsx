@@ -6,9 +6,11 @@ import { AddFriendForm } from "@/components/friends/add-friend-form";
 import { ActionButton } from "@/components/shared/action-button";
 import { BalanceText } from "@/components/shared/balance-text";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { brand } from "@/config/brand";
 import { ROUTES } from "@/lib/auth/routes";
+import { cn } from "@/lib/utils";
 import { acceptFriendRequest, deleteFriendRequest, withdrawFriendRequest } from "@/server/actions/friends";
 import { requireOnboardedProfile } from "@/server/auth";
 import { type FriendRequest, getFriendsOverview } from "@/server/friends";
@@ -61,7 +63,7 @@ export default async function FriendsPage() {
               <li key={friend.id}>
                 <Link
                   href={`${ROUTES.friends}/${friend.id}`}
-                  className="flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+                  className={cn("flex min-h-14 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{friend.displayName}</span>

@@ -74,10 +74,12 @@ function SidebarNavLinkView({ item, pathname }: { item: NavItem; pathname: strin
       aria-current={active ? "page" : undefined}
       className={cn(
         base,
-        "transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "relative transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/80",
       )}
     >
+      {/* A bar, not just colour, marks the current page (review L19). */}
+      {active ? <ActiveIndicator className="inset-y-2 left-0 w-1" /> : null}
       <Icon aria-hidden className={cn("size-4", active && "text-primary")} />
       {item.label}
     </Link>
@@ -132,13 +134,22 @@ function BottomNavLinkView({ item, pathname }: { item: NavItem; pathname: string
       <Link
         href={item.href}
         aria-current={active ? "page" : undefined}
-        className={cn(base, "w-full", active ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+        className={cn(
+          base,
+          "relative w-full",
+          active ? "text-primary-emphasis" : "text-muted-foreground hover:text-foreground",
+        )}
       >
+        {active ? <ActiveIndicator className="inset-x-4 top-0 h-1" /> : null}
         <Icon aria-hidden className="size-5" />
         {item.label}
       </Link>
     </li>
   );
+}
+
+function ActiveIndicator({ className }: { className: string }) {
+  return <span aria-hidden data-active-indicator className={cn("absolute rounded-full bg-primary", className)} />;
 }
 
 /** The prominent Add Expense action: a round button on phones, full width in the sidebar. */

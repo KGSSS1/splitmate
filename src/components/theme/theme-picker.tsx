@@ -27,7 +27,7 @@ export function ThemePicker({ className }: { className?: string }) {
           <label
             key={value}
             className={cn(
-              "flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors",
+              "flex min-h-11 cursor-pointer items-center md:min-h-9 justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors",
               "has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
               theme === value && "bg-background text-foreground shadow-sm",
             )}

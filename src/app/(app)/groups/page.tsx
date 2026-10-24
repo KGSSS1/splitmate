@@ -8,6 +8,7 @@ import { GroupTypeIcon } from "@/components/groups/group-type-icon";
 import { ActionButton } from "@/components/shared/action-button";
 import { BalanceText } from "@/components/shared/balance-text";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROUTES } from "@/lib/auth/routes";
@@ -90,7 +91,7 @@ export default async function GroupsPage({ searchParams }: PageProps<"/groups">)
             <li key={group.id}>
               <Link
                 href={`${ROUTES.groups}/${group.id}`}
-                className="flex min-h-16 items-center gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+                className={cn("flex min-h-16 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
               >
                 <GroupTypeIcon type={group.groupType} />
                 <span className="min-w-0 flex-1">
