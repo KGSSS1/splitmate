@@ -206,5 +206,6 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `140_review_batch1` | Review batch 1: `withdrawn`, one open payment per debt, per-currency maximum and balance range, split-detail checks, history and empty saves, neutral friend requests, former members and group names, no direct group updates, masked invitee addresses |
 | `150_review_batch2` | Review batch 2: idempotency keys scoped to their creator (expenses, settlements, settle-up batches); pairwise balances net debts in both directions |
 | `160_recurring_receipts` | M7: schedule arithmetic (month ends, 29 February), the generator run repeatedly (each occurrence once), catch-up, time zones, end dates, create/edit/pause/resume/cancel with their checks and audit, failed occurrences, the pg_cron job, receipt limits and non-members denied |
+| `170_auth_user_deletion` | An auth user deleted outside the app: profile anonymized, history kept, the email can sign up again; leftover profiles free their email at sign-up |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

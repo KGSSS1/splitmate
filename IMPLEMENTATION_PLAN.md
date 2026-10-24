@@ -2,6 +2,24 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-24: Staging sign-up fix (auth users deleted outside the app)
+
+- **Symptom:** creating a user in the staging dashboard failed with "Database error creating new user".
+- **Cause:** a read-only query on staging showed one profile (`sashankkrovvidi@gmail.com`, created 17:00 UTC, no data) with no auth user. That auth user had been removed outside the app, but profiles have no FK to `auth.users` (history must survive). The profile kept its unique email, so every later sign-up with that address failed. This was reproduced locally through the Auth admin API, with the same message.
+- **Fix:** migration `20261024100000_auth_user_deletion.sql`:
+  - A new `on_auth_user_deleted` trigger anonymizes the profile ("Deleted user", no email or avatar, `deleted_at` set), as account deletion will in M9. Expenses and the ledger are untouched.
+  - `handle_new_user` frees an email still held by a profile with no auth user.
+  - Existing leftovers are anonymized once.
+- **Tests:** integration `auth-user-lifecycle` (3; it failed before the fix), pgTAP `170_auth_user_deletion` (9).
+- **Checks:**
+  - Local: `db reset` ✓; types unchanged; pgTAP 565 ✓; integration 30 ✓; `db lint` and advisors ✓.
+  - Sign-up E2E specs: 18/18 on two reruns. The first run had 2 timeouts on a cold dev server.
+- **Staging (approved 2026-10-24):**
+  - The dry run showed only `20261024100000`; it was pushed.
+  - On staging, the leftover profile is now anonymized and the email is free.
+  - `db lint --linked` is clean, and the advisors are unchanged (28 rule-0029 WARNs).
+- **Note:** sign-up had never been tried on staging before this; the phone test is still to do.
+
 ### 2026-10-24: M7 Recurring expenses and receipts complete (on staging)
 
 - **Migration** `20261024090000_recurring_receipts.sql`:
