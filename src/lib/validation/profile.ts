@@ -37,5 +37,10 @@ export const onboardingSchema = z.object({
 
 export const profileSettingsSchema = onboardingSchema;
 
+/** Onboarding plus where to go afterwards (checked with safeNextPath). */
+export const completeOnboardingSchema = onboardingSchema.extend({
+  next: z.string().max(2048).optional(),
+});
+
 export type OnboardingInput = z.input<typeof onboardingSchema>;
 export type ProfileSettingsInput = z.input<typeof profileSettingsSchema>;

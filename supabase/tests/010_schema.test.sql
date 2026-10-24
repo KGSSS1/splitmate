@@ -5,7 +5,7 @@ select plan(30);
 -- ---------------------------------------------------------------- coverage & privileges
 select is(
   (select count(*)::int from pg_tables where schemaname = 'public'),
-  19, 'all 19 SPEC §6 tables exist (exchange_rates deferred)');
+  20, 'all 19 SPEC §6 tables (exchange_rates deferred) and friend_email_requests exist');
 select is(
   (select count(*)::int from pg_tables where schemaname = 'public' and not rowsecurity),
   0, 'RLS is enabled on every public table');
@@ -63,11 +63,11 @@ select is((select email from public.profiles where id = tests.uid('mixed')), 're
           'changing the auth email updates the profile copy');
 
 -- ---------------------------------------------------------------- domains & constraints
-select throws_ok($$ select 0::public.minor_amount $$, '23514', null, 'amounts must be positive');
-select throws_ok($$ select 9007199254740992::public.minor_amount $$, '23514', null,
+select throws_ok($$ select 0::public.minor_amount $$, '23514', 'value for domain minor_amount violates check constraint "minor_amount_check"', 'amounts must be positive');
+select throws_ok($$ select 9007199254740992::public.minor_amount $$, '23514', 'value for domain minor_amount violates check constraint "minor_amount_check"',
                  'amounts above Number.MAX_SAFE_INTEGER are rejected');
 select lives_ok($$ select 9007199254740991::public.minor_amount $$, 'the maximum safe amount is accepted');
-select throws_ok($$ select 'inr'::public.currency_code $$, '23514', null, 'currency codes are 3 upper-case letters');
+select throws_ok($$ select 'inr'::public.currency_code $$, '23514', 'value for domain currency_code violates check constraint "currency_code_supported"', 'currency codes are 3 upper-case letters');
 
 select tests.create_user('alice');
 select tests.create_user('bob');
@@ -78,32 +78,32 @@ reset role;
 select throws_ok(
   format($$ insert into public.ledger_entries (debtor_id, creditor_id, amount, currency, expense_id, source_version, entry_type)
             values (%L, %L, 1, 'INR', %L, 1, 'charge') $$, tests.uid('alice'), tests.uid('alice'), tests.expense_id('schema-e1')),
-  '23514', null, 'a ledger entry needs two different people');
+  '23514', 'new row for relation "ledger_entries" violates check constraint "ledger_entries_two_people"', 'a ledger entry needs two different people');
 select throws_ok(
   format($$ insert into public.ledger_entries (debtor_id, creditor_id, amount, currency, source_version, entry_type)
             values (%L, %L, 1, 'INR', 1, 'charge') $$, tests.uid('alice'), tests.uid('bob')),
-  '23514', null, 'a ledger entry is linked to exactly one expense or settlement');
+  '23514', 'new row for relation "ledger_entries" violates check constraint "ledger_entries_one_source"', 'a ledger entry is linked to exactly one expense or settlement');
 select throws_ok(
   format($$ insert into public.settlements (payer_id, receiver_id, amount, currency, status, created_by, idempotency_key)
             values (%L, %L, 1, 'INR', 'pending', %L, gen_random_uuid()) $$, tests.uid('bob'), tests.uid('bob'), tests.uid('bob')),
-  '23514', null, 'a settlement needs two different people');
+  '23514', 'new row for relation "settlements" violates check constraint "settlements_two_people"', 'a settlement needs two different people');
 select throws_ok(
   format($$ insert into public.expenses (created_by, updated_by, description, amount, currency, expense_date, split_method, idempotency_key)
             values (%L, %L, 'Dup', 1, 'INR', current_date, 'equal', %L) $$, tests.uid('alice'), tests.uid('alice'), tests.uid('schema-e1')),
-  '23505', null, 'idempotency keys are unique per creator');
+  '23505', 'duplicate key value violates unique constraint "expenses_idempotency_unique"', 'idempotency keys are unique per creator');
 
 -- ---------------------------------------------------------------- append-only tables
-select throws_ok($$ update public.ledger_entries set amount = 1 $$, 'SM403', null,
+select throws_ok($$ update public.ledger_entries set amount = 1 $$, 'SM403', 'ledger_entries is append-only',
                  'ledger entries cannot be updated, even by the owner role');
-select throws_ok($$ delete from public.ledger_entries $$, 'SM403', null,
+select throws_ok($$ delete from public.ledger_entries $$, 'SM403', 'ledger_entries is append-only',
                  'ledger entries cannot be deleted, even by the owner role');
-select throws_ok($$ delete from public.audit_events $$, 'SM403', null, 'audit events cannot be deleted');
+select throws_ok($$ delete from public.audit_events $$, 'SM403', 'audit_events is append-only', 'audit events cannot be deleted');
 
 -- ---------------------------------------------------------------- deletion rules
 select throws_ok(format($$ delete from public.profiles where id = %L $$, tests.uid('bob')),
-                 '23503', null, 'a profile with financial history cannot be deleted');
+                 '23503', 'update or delete on table "profiles" violates foreign key constraint "friendships_user_low_fkey" on table "friendships"', 'a profile with financial history cannot be deleted');
 select throws_ok(format($$ delete from public.groups where id = %L $$, tests.group_id('Schema group')),
-                 '23503', null, 'a group with expenses cannot be deleted');
+                 '23503', 'update or delete on table "groups" violates foreign key constraint "group_members_group_id_fkey" on table "group_members"', 'a group with expenses cannot be deleted');
 delete from auth.users where id = tests.uid('bob');
 select ok(exists (select 1 from public.profiles where id = tests.uid('bob')),
           'deleting the auth user keeps the profile, so history and balances survive');

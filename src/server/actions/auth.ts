@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { authErrorMessage } from "@/lib/auth/errors";
@@ -14,7 +15,8 @@ import {
   updatePasswordSchema,
 } from "@/lib/validation/auth";
 import { type ActionResult, invalidInput } from "@/server/action-result";
-import { requireUser } from "@/server/auth";
+import { rememberNextPath } from "@/server/after-auth";
+import { requireLiveSession, requireUser } from "@/server/auth";
 
 /** Where email links (confirmation, password reset) land: the token-hash route. */
 function emailLinkTarget(): string {
@@ -34,7 +36,12 @@ export async function signUp(input: unknown): Promise<ActionResult> {
   if (error) return { ok: false, error: authErrorMessage(error.code) };
 
   // With email confirmation off (not the default) a session exists right away.
-  if (data.session) redirect(ROUTES.onboarding);
+  if (data.session) {
+    const next = safeNextPath(parsed.data.next);
+    redirect(next === ROUTES.dashboard ? ROUTES.onboarding : `${ROUTES.onboarding}?next=${encodeURIComponent(next)}`);
+  }
+  // Brings the user back to, say, the invitation they signed up from.
+  await rememberNextPath(parsed.data.next);
   // For an email that is already registered Supabase answers the same way and
   // sends nothing, so the response does not reveal which emails have accounts.
   redirect(`${ROUTES.checkEmail}?for=signup`);
@@ -93,6 +100,7 @@ export async function updatePassword(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return invalidInput(parsed.error);
 
   await requireUser();
+  await requireLiveSession();
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { ok: false, error: authErrorMessage(error.code) };
@@ -103,6 +111,14 @@ export async function updatePassword(input: unknown): Promise<ActionResult> {
 export async function signOut(): Promise<void> {
   const supabase = await createClient();
   // "local" ends this browser's session only; other devices stay signed in.
-  await supabase.auth.signOut({ scope: "local" });
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) {
+    // Supabase Auth couldn't be reached, so the session wasn't cleared. Drop its
+    // cookies anyway: logging out must work in this browser (review L26).
+    const store = await cookies();
+    for (const { name } of store.getAll()) {
+      if (name.startsWith("sb-")) store.delete(name);
+    }
+  }
   redirect(ROUTES.login);
 }

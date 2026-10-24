@@ -1,52 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { field, logIn, logOut, newAccount, newPersonPage, signUpAndVerify } from "./support/accounts";
 import { getEmailLink } from "./support/mailpit";
 
 // Runs against local Supabase only: emails are read from its Mailpit inbox.
 // Each flow visits several pages, which the dev server compiles on first use.
 test.describe.configure({ timeout: 90_000 });
-
-/**
- * A visible form control by its exact label. With Cache Components, pages
- * navigated away from stay mounted but hidden, so the same label can exist twice.
- */
-function field(page: Page, label: string) {
-  return page.getByLabel(label, { exact: true }).filter({ visible: true });
-}
-
-function newAccount() {
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return { email: `e2e-${id}@example.com`, password: `Test-${id}-pw` };
-}
-
-async function signUpAndVerify(page: Page, account: { email: string; password: string }) {
-  await page.goto("/signup");
-  await field(page, "Email").fill(account.email);
-  await field(page, "Password").fill(account.password);
-  await page.getByRole("button", { name: "Create account" }).click();
-
-  await expect(page).toHaveURL(/\/check-email\?for=signup$/);
-  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-
-  await page.goto(await getEmailLink(account.email, "Confirm your"));
-  await expect(page).toHaveURL(/\/onboarding$/);
-}
-
-async function logOut(page: Page, isMobile: boolean) {
-  if (isMobile) {
-    await page.getByRole("button", { name: "Open menu" }).click();
-    await page.getByRole("menuitem", { name: "Log out" }).click();
-  } else {
-    await page.getByRole("button", { name: "Log out" }).click();
-  }
-  await expect(page).toHaveURL(/\/login$/);
-}
-
-async function logIn(page: Page, account: { email: string; password: string }) {
-  await field(page, "Email").fill(account.email);
-  await field(page, "Password").fill(account.password);
-  await page.getByRole("button", { name: "Log in" }).click();
-}
 
 test("sign up, verify by email, onboard, log out and back in to an empty dashboard", async ({
   page,
@@ -75,7 +34,7 @@ test("sign up, verify by email, onboard, log out and back in to an empty dashboa
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav).toBeVisible();
   await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("button", { name: /Add expense/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Add expense" }).filter({ visible: true }).first()).toBeVisible();
 
   if (isMobile) {
     // Bottom bar on phones, with the secondary pages behind the menu.
@@ -133,4 +92,39 @@ test("an invalid email link explains itself on the login page", async ({ page })
   await page.goto("/auth/confirm?token_hash=not-a-real-token&type=email");
   await expect(page).toHaveURL(/\/login\?error=link$/);
   await expect(page.getByText("That link is invalid or has expired.")).toBeVisible();
+});
+
+// Review M6 (C1): "/.//host" normalises to "//host", which the client router
+// used to follow to another origin after logging in or onboarding.
+test("a dot-segment `next` can't send a signed-in user to another site", async ({ page, browser }) => {
+  const account = newAccount();
+  await signUpAndVerify(page, account);
+  await field(page, "Your name").fill("Redirect Test");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // Already onboarded: /onboarding forwards to `next` straight away.
+  await page.goto("/onboarding?next=%2F.%2F%2Fevil.example%2Fpwned");
+  await expect(page).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
+
+  // Logging in (in a fresh browser) with the same kind of `next`.
+  const other = await newPersonPage(browser);
+  await other.goto("/login?next=%2F.%2F%2Fevil.example%2Fpwned-login");
+  await logIn(other, account);
+  await expect(other).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
+  await other.context().close();
+});
+
+// Review M6 L13: nothing in the browser reads the session, so its cookie is HttpOnly
+// (an injected script can't steal the refresh token).
+test("the session cookie is HttpOnly", async ({ page }) => {
+  const account = newAccount();
+  await signUpAndVerify(page, account);
+  const session = (await page.context().cookies()).filter((cookie) => /^sb-.*-auth-token/.test(cookie.name));
+  expect(session.length).toBeGreaterThan(0);
+  for (const cookie of session) {
+    expect(cookie.httpOnly, cookie.name).toBe(true);
+    expect(cookie.sameSite, cookie.name).toBe("Lax");
+  }
+  expect(await page.evaluate(() => document.cookie)).not.toMatch(/sb-.*-auth-token/);
 });

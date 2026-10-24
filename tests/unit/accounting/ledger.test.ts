@@ -235,7 +235,7 @@ describe("settlement ledger entries", () => {
   };
 
   it("only a completed settlement affects balances", () => {
-    const statuses: SettlementStatus[] = ["pending", "rejected", "cancelled"];
+    const statuses: SettlementStatus[] = ["pending", "rejected", "withdrawn", "cancelled"];
     for (const status of statuses) {
       expect(buildSettlementEntries({ ...settlement, status })).toEqual([]);
     }

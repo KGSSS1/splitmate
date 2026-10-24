@@ -17,7 +17,7 @@ import { completeOnboarding } from "@/server/actions/profile";
 const formSchema = onboardingSchema.omit({ timeZone: true });
 type Values = z.input<typeof formSchema>;
 
-export function OnboardingForm({ defaultValues }: { defaultValues: Values }) {
+export function OnboardingForm({ defaultValues, next }: { defaultValues: Values; next?: string }) {
   const form = useForm<Values, unknown, z.output<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues,
@@ -28,7 +28,7 @@ export function OnboardingForm({ defaultValues }: { defaultValues: Values }) {
   return (
     <form
       noValidate
-      onSubmit={form.handleSubmit((values) => submit({ ...values, timeZone: detectTimeZone() }))}
+      onSubmit={form.handleSubmit((values) => submit({ ...values, timeZone: detectTimeZone(), next }))}
       className="grid gap-4"
     >
       <FormStatus error={error} />

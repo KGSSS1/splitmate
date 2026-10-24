@@ -12,23 +12,23 @@ select tests.add_equal_expense('usd', tests.group_id('House'), 'alice', 2000, ar
 
 -- ---------------------------------------------------------------- leaving needs a zero balance
 select tests.authenticate_as('bob');
-select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM409', null,
+select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM409', 'The balance in this group must be zero in every currency first',
                  'a member who owes money cannot leave');
 select tests.authenticate_as('alice');
 select throws_ok(format($$ select public.remove_group_member(%L, %L) $$, tests.group_id('House'), tests.uid('bob')),
-                 'SM409', null, 'an admin cannot remove a member who owes money');
+                 'SM409', 'The balance in this group must be zero in every currency first', 'an admin cannot remove a member who owes money');
 select throws_ok(format($$ select public.remove_group_member(%L, %L) $$, tests.group_id('House'), tests.uid('alice')),
-                 'SM422', null, 'admins leave with leave_group, not by removing themselves');
+                 'SM422', 'Use leave_group to leave a group yourself', 'admins leave with leave_group, not by removing themselves');
 
 -- Bob settles INR in full; USD is still outstanding.
 select public.create_settlement(tests.uid('bob-inr'), tests.group_id('House'), tests.uid('bob'), tests.uid('alice'), 30000, 'INR');
 select throws_ok(format($$ select public.remove_group_member(%L, %L) $$, tests.group_id('House'), tests.uid('bob')),
-                 'SM409', null, 'a zero INR balance is not enough while USD is outstanding');
+                 'SM409', 'The balance in this group must be zero in every currency first', 'a zero INR balance is not enough while USD is outstanding');
 select public.create_settlement(tests.uid('bob-usd'), tests.group_id('House'), tests.uid('bob'), tests.uid('alice'), 1000, 'USD');
 
 select tests.authenticate_as('carol');
 select throws_ok(format($$ select public.remove_group_member(%L, %L) $$, tests.group_id('House'), tests.uid('bob')),
-                 'SM403', null, 'a non-admin cannot remove members');
+                 'SM403', 'Only a group admin can remove members', 'a non-admin cannot remove members');
 
 select tests.authenticate_as('alice');
 select lives_ok(format($$ select public.remove_group_member(%L, %L) $$, tests.group_id('House'), tests.uid('bob')),
@@ -45,27 +45,27 @@ select tests.authenticate_as('bob');
 select throws_ok(
   format($$ select public.create_expense(gen_random_uuid(), %L, 'After removal', 100, 'INR', current_date, 'equal', %L, %L, '[]') $$,
          tests.group_id('House'), tests.amounts('bob', '100'), tests.amounts('bob', '100')),
-  'SM403', null, 'a removed member cannot add expenses');
+  'SM403', 'You are not a member of this group', 'a removed member cannot add expenses');
 select throws_ok(
   format($$ select public.update_expense(%L, 1, 'Edit', 90000, 'INR', current_date, 'equal', %L, %L, '[]') $$,
          tests.expense_id('rent'), tests.amounts('alice', '90000'), tests.amounts('alice', '90000')),
-  'SM403', null, 'a removed member cannot edit expenses');
-select throws_ok(format($$ select public.cancel_expense(%L, 1) $$, tests.expense_id('rent')), 'SM403', null,
+  'SM403', 'Only current group members can change this expense', 'a removed member cannot edit expenses');
+select throws_ok(format($$ select public.cancel_expense(%L, 1) $$, tests.expense_id('rent')), 'SM403', 'Only current group members can change this expense',
                  'a removed member cannot cancel expenses');
 select throws_ok(
   format($$ select public.create_settlement(gen_random_uuid(), %L, %L, %L, 100, 'INR') $$,
          tests.group_id('House'), tests.uid('bob'), tests.uid('alice')),
-  'SM403', null, 'a removed member cannot record settlements');
-select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('House')), 'SM403', null,
+  'SM403', 'You are not a member of this group', 'a removed member cannot record settlements');
+select throws_ok(format($$ select public.create_invitation(%L) $$, tests.group_id('House')), 'SM403', 'You are not a member of this group',
                  'a removed member cannot invite people');
-select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM404', null,
+select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM404', 'Not a current member of this group',
                  'a removed member cannot leave again');
 select is((select count(*)::int from public.expenses where group_id = tests.group_id('House')), 2,
           'a removed member still reads the expenses they were part of');
 
 -- ---------------------------------------------------------------- last admin hands over
 select tests.authenticate_as('alice');
-select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM409', null,
+select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM409', 'The balance in this group must be zero in every currency first',
                  'the admin cannot leave while owed money');
 select public.create_settlement(tests.uid('carol-inr'), tests.group_id('House'), tests.uid('carol'), tests.uid('alice'), 30000, 'INR');
 select lives_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'the admin leaves at zero balance');
@@ -77,18 +77,18 @@ select is((select count(*)::int from public.notifications where user_id = tests.
 
 -- ---------------------------------------------------------------- pending settlement after leaving
 -- Bob records a pending payment in "Pair" (no balance effect), then leaves; the pending
--- settlement is cancelled automatically, so it can never be confirmed for a former member.
+-- settlement is withdrawn automatically, so it can never be confirmed for a former member.
 select tests.authenticate_as('bob');
 select public.create_settlement(tests.uid('pair-pending'), tests.group_id('Pair'), tests.uid('bob'), tests.uid('alice'), 500, 'INR');
 select lives_ok(format($$ select public.leave_group(%L) $$, tests.group_id('Pair')),
                 'a pending settlement does not block leaving (it has no balance effect)');
 select tests.authenticate_as('alice');
-select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('pair-pending')), 'SM409', null,
-                 'a settlement cannot be confirmed once a party has left the group (it was cancelled)');
+select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('pair-pending')), 'SM409', 'Cannot confirm a withdrawn settlement',
+                 'a settlement cannot be confirmed once a party has left the group (it was withdrawn)');
 
 -- ---------------------------------------------------------------- outsiders and rejoining
 select tests.authenticate_as('dave');
-select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM404', null,
+select throws_ok(format($$ select public.leave_group(%L) $$, tests.group_id('House')), 'SM404', 'Not a current member of this group',
                  'a non-member cannot leave');
 select tests.authenticate_as('carol');
 create temp table rejoin as select * from public.create_invitation(tests.group_id('House'));

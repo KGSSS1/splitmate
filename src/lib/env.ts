@@ -49,15 +49,13 @@ const serverSchema = z.object({
 export type ClientEnv = z.infer<typeof clientSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 
+const LOCAL_HINT = "Copy .env.example to .env.local and fill in the values (see README.md).";
+const VERCEL_HINT =
+  "Set them in the Vercel project under Settings → Environment Variables for this environment, then redeploy (see docs/deployment.md).";
+
 export class EnvError extends Error {
-  constructor(problems: string[]) {
-    super(
-      [
-        "Invalid environment variables:",
-        ...problems.map((problem) => `  - ${problem}`),
-        "Copy .env.example to .env.local and fill in the values (see README.md).",
-      ].join("\n"),
-    );
+  constructor(problems: string[], hint: string = LOCAL_HINT) {
+    super(["Invalid environment variables:", ...problems.map((problem) => `  - ${problem}`), hint].join("\n"));
     this.name = "EnvError";
   }
 }
@@ -97,9 +95,10 @@ export function parseServerEnv(source: EnvSource): ServerEnv {
 
 /**
  * The app's public URL. An explicit NEXT_PUBLIC_APP_URL always wins. On a
- * Vercel preview without one, it is the stable Git branch URL when the
- * deployment has one (Git integration only), otherwise the deployment's own
- * URL (docs/deployment.md).
+ * Vercel preview without one, it is the stable Git branch URL (e.g. the
+ * `staging` branch's), falling back to the deployment's own URL. Production
+ * is never derived: it must set NEXT_PUBLIC_APP_URL explicitly
+ * (docs/deployment.md).
  */
 export function resolveAppUrl(source: EnvSource): string | undefined {
   if (source.NEXT_PUBLIC_APP_URL) return source.NEXT_PUBLIC_APP_URL;
@@ -114,8 +113,12 @@ export function validateEnv(source: EnvSource): void {
     ...collectLeakedSecrets(source),
     ...collectProblems(clientSchema, source),
     ...collectProblems(serverSchema, source),
-  ];
-  if (problems.length > 0) throw new EnvError(problems);
+  ].map((problem) =>
+    source.VERCEL_ENV === "production" && problem === "NEXT_PUBLIC_APP_URL is missing"
+      ? "NEXT_PUBLIC_APP_URL is missing: Vercel Production must set it explicitly to the production URL"
+      : problem,
+  );
+  if (problems.length > 0) throw new EnvError(problems, source.VERCEL ? VERCEL_HINT : LOCAL_HINT);
 }
 
 let clientEnv: ClientEnv | undefined;

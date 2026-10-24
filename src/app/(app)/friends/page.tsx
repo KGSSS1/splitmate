@@ -1,0 +1,148 @@
+import { ChevronRight, UserRound } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+
+import { AddFriendForm } from "@/components/friends/add-friend-form";
+import { ActionButton } from "@/components/shared/action-button";
+import { BalanceText } from "@/components/shared/balance-text";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ROW_LINK_CLASS } from "@/components/shared/row-link";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { brand } from "@/config/brand";
+import { ROUTES } from "@/lib/auth/routes";
+import { cn } from "@/lib/utils";
+import { acceptFriendRequest, deleteFriendRequest, withdrawFriendRequest } from "@/server/actions/friends";
+import { requireOnboardedProfile } from "@/server/auth";
+import { type FriendRequest, getFriendsOverview } from "@/server/friends";
+
+export const metadata: Metadata = { title: "Friends" };
+
+export default async function FriendsPage() {
+  await requireOnboardedProfile();
+  const { friends, incoming, outgoing } = await getFriendsOverview();
+
+  return (
+    <div className="grid max-w-3xl gap-6">
+      <header className="grid gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Friends</h1>
+        <p className="text-muted-foreground">
+          People you share expenses with. Joining a group makes you friends with its members.
+        </p>
+      </header>
+
+      <Card id="add-friend">
+        <CardHeader>
+          <CardTitle>
+            <h2>Add a friend</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AddFriendForm />
+        </CardContent>
+      </Card>
+
+      {incoming.length > 0 ? (
+        <RequestList
+          title="Friend requests"
+          description="People who want to split expenses with you."
+          requests={incoming}
+        />
+      ) : null}
+
+      <section aria-labelledby="friends-heading" className="grid gap-3">
+        <h2 id="friends-heading" className="text-lg font-semibold">
+          Your friends
+        </h2>
+        {friends.length === 0 ? (
+          <EmptyState icon={UserRound} title="No friends yet">
+            <p>Add a friend by email above, or create a group and invite people to it.</p>
+          </EmptyState>
+        ) : (
+          <ul className="divide-y rounded-xl border">
+            {friends.map((friend) => (
+              <li key={friend.id}>
+                <Link
+                  href={`${ROUTES.friends}/${friend.id}`}
+                  className={cn("flex min-h-14 items-center gap-3 px-4 py-3", ROW_LINK_CLASS)}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{friend.displayName}</span>
+                    <BalanceText balances={friend.balances} perspective="friend" />
+                  </span>
+                  <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {outgoing.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>Sent requests</h2>
+            </CardTitle>
+            <CardDescription>
+              If someone uses {brand.name} with one of these addresses, they can accept. If not, the request waits
+              until they sign up.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="grid gap-4" aria-label="Sent requests">
+              {outgoing.map((request) => (
+                <li key={request.requestId} className="flex flex-wrap items-start justify-between gap-3">
+                  <span className="font-medium break-all">{request.email}</span>
+                  <ActionButton action={withdrawFriendRequest.bind(null, { requestId: request.requestId })}>
+                    Withdraw
+                  </ActionButton>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function RequestList({
+  title,
+  description,
+  requests,
+}: {
+  title: string;
+  description: string;
+  requests: FriendRequest[];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2>{title}</h2>
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-4">
+          {requests.map((request) => (
+            <li key={request.friendshipId} className="flex flex-wrap items-start justify-between gap-3">
+              <span className="font-medium">{request.displayName}</span>
+              <div className="flex flex-wrap gap-2">
+                <ActionButton
+                  variant="default"
+                  action={acceptFriendRequest.bind(null, { friendshipId: request.friendshipId })}
+                >
+                  Accept
+                </ActionButton>
+                <ActionButton action={deleteFriendRequest.bind(null, { friendshipId: request.friendshipId })}>
+                  Decline
+                </ActionButton>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}

@@ -56,8 +56,8 @@ Support both **direct (non-group) friend expenses** and **group expenses**.
 ### Scope decisions for v1
 
 - Only registered users can be expense participants. Inviting someone by email or link creates a pending invitation; they appear in expenses only after accepting. (Placeholder/unregistered members are out of scope for v1; note them as a future enhancement.)
-- A friend balance between two users = the sum of their pairwise balances across all shared groups plus their direct expenses, kept separate per currency. (This requires a pairwise ledger; see Section 6.)
-- Users find each other by exact email match or invite link only. No browsable user directory.
+- A friend balance between two users = the sum, per currency, of what they owe each other in each context: their direct expenses, each shared group that doesn't simplify debts (their raw pairwise balance), and each shared group that simplifies debts (the transfer between the two of them in that group's simplified plan; see Section 7). (This requires a pairwise ledger; see Section 6.)
+- Users find each other by exact email match or invite link only. No browsable user directory. A friend request by email gets the same neutral reply whether or not the address has an account ("If someone uses SplitMate with that email, they'll see your request"), and the sender's list of sent requests shows the email address they typed either way, so the reply never reveals who is registered. A request to an address without an account waits and applies if that address signs up later.
 - Joining a group automatically makes its members friends with each other (as Splitwise does). Direct friend requests by email are also supported.
 - Any current group member can add, edit, or cancel any expense in that group; every change is recorded in history and notifies the affected participants. For direct expenses, either of the two friends can edit.
 - A settlement recorded by the **receiver** is completed immediately. A settlement recorded by the **payer** stays pending until the receiver confirms or rejects it, so nobody can clear their own debt unilaterally. Either party can later cancel a completed settlement, which writes reversing entries.
@@ -215,6 +215,8 @@ The most important part of the app. Build and test it as pure TypeScript functio
 
 - Amounts are integers in the currency's minor unit, using the ISO 4217 exponent per currency: INR/USD/EUR/GBP have 2 decimals, JPY has 0, KWD/BHD have 3. Keep a currency table in `lib/money` and never assume 2 decimals.
 - In PostgreSQL, store as `bigint`. In TypeScript, use `number` restricted to safe integers (validate with `Number.isSafeInteger` at every boundary) rather than JS `bigint`, because `bigint` is not JSON-serializable and cannot pass from Server to Client Components. Document this decision and the resulting maximum amount.
+- **Maximum expense amount per currency:** a single expense may not exceed a realistic limit, about US$100,000 rounded to a sensible figure in each currency (INR ₹1,00,00,000, USD/EUR/GBP 100,000, JPY 15,000,000, KWD 50,000, …). The table lives in `lib/money` and is mirrored in the database, which enforces it; a test keeps the two in sync. The form says which limit applies.
+- **Balance range:** no write may push anyone's balances beyond what TypeScript can represent exactly. For every person and currency, the sum of the absolute values of their pairwise balances must stay within ±(2^53 − 1) minor units; a write that would break this is refused.
 - Never use floating-point arithmetic for money. Parse user input strings like `"123.45"` directly to minor units without `parseFloat`.
 - Percentages are stored as integer **basis points** (100% = 10,000). Weighted shares are positive integers.
 - Format for display with `Intl.NumberFormat` and the user's locale (default `en-IN`, which shows ₹1,23,456.78).
@@ -261,7 +263,8 @@ Also test: ₹100 split three ways gives 3334/3333/3333 paise deterministically.
 
 - Use a deterministic greedy algorithm: separate by currency; repeatedly match the largest creditor with the largest debtor (ties broken by user ID) and transfer the smaller of the two amounts.
 - It must preserve every person's net balance exactly and produce at most n−1 transfers for n non-zero members. Finding the absolute minimum number of transfers is NP-hard in general, so describe the output as "simplified", never "optimal".
-- Simplification runs within a group (with a per-group "simplify debts" toggle, on by default). When it is on, that group's suggested transfers are computed from members' net balances, and a settlement between two members who had no direct pairwise debt is valid: it is recorded as a pairwise entry and the group nets stay correct. Show friend balances from raw pairwise entries, and label the group view as "simplified" when the toggle is on. It never mixes currencies.
+- Simplification runs within a group (with a per-group "simplify debts" toggle, on by default). When it is on, that group's suggested transfers are computed from members' net balances, and a settlement between two members who had no direct pairwise debt is valid: it is recorded as a pairwise entry and the group nets stay correct. Label the group view as "simplified" when the toggle is on. It never mixes currencies.
+- Friend-level views follow the plan. For a group with the toggle on, what two members owe each other in friend balances, dashboard totals and "settle up everything" (Section 11) is the transfer between them in that group's simplified plan, not their raw pairwise entries. Otherwise, once everyone follows the plan, the group is settled while leftover pairwise rows (for example a cycle A→B→C→A) would still appear owed elsewhere. Groups with the toggle off, and direct expenses, use raw pairwise entries. Show which amounts come from a simplified plan. The raw pairwise ledger stays the source of truth; the plan is computed from it.
 - Tests: multiple creditors and debtors, partial settlements, ties and equivalent solutions, all-zero balances, unequal balances, a 50-member group, currency separation, and a property-based test that random balances summing to zero are always fully cleared.
 
 ## 8. Authentication and security
@@ -271,7 +274,8 @@ Implement: email/password sign-up and login, email verification, password reset,
 ### RLS policies
 
 - RLS enabled on every table in the exposed schema. Default deny.
-- Profiles: users read/update their own row; other users can read only documented public fields (display name, avatar) of people they share a group or friendship with. Use a view or column-limited function for public fields.
+- Profiles: users read/update their own row; other users can read only documented public fields (display name, avatar) of people they share a group or an accepted friendship with, or who sent them a pending friend request. Sending a request reveals nothing about the recipient. Use a view or column-limited function for public fields.
+- Group invitations: the invited email address is visible only to the member who created the invitation and to group admins; audit records store it masked.
 - Group records: only current members can read; former members can read their own historical expenses only.
 - Only current group members (and, for direct expenses, the two friends) can read, add, edit, or cancel expenses, per the Section 2 rules. Direct expenses (null `group_id`) need their own policies based on participation, not group membership.
 - Settlements: only the payer or receiver can create one; only the receiver can confirm or reject a pending one (Section 2).
@@ -295,7 +299,7 @@ Implement: email/password sign-up and login, email verification, password reset,
 
 ### Visual direction
 
-Neutral background with green primary accent; strong typography; tabular numerals for money; restrained cards, borders, and shadows; consistent spacing; WCAG AA contrast. Light and dark themes. Loading skeletons and useful empty states. Accessible keyboard navigation and screen-reader labels. Do not rely on color alone for owed/owing: pair green/red with text ("you are owed", "you owe") and signs.
+Neutral background with green primary accent; strong typography; tabular numerals for money; restrained cards, borders, and shadows; consistent spacing; WCAG AA contrast (including text on tinted badges and buttons). Touch targets are at least 44×44 px on phones, for every interactive element, from the first layout milestone on. Keyboard focus is always visible. Light and dark themes. Loading skeletons and useful empty states. Accessible keyboard navigation and screen-reader labels. Do not rely on color alone for owed/owing: pair green/red with text ("you are owed", "you owe") and signs.
 
 ### Navigation
 
@@ -322,11 +326,11 @@ Mobile: bottom navigation (Dashboard, Groups, Friends, Activity) with a prominen
 
 ### Dashboard
 
-Total you owe, total owed to you, and net position (each per currency); outstanding balances by person; group summaries; recent activity; recent settlements; quick actions (add expense, create group, invite friend, settle up). Label clearly so that gross spending, net balances, and repayments are never confused.
+Total you owe, total owed to you, and net position (each per currency); outstanding balances by person (both following each group's simplified plan where the group simplifies debts, Section 7); group summaries; recent activity; recent settlements; quick actions (add expense, create group, invite friend, settle up). Label clearly so that gross spending, net balances, and repayments are never confused.
 
 ## 10. Expense features
 
-Description, amount, currency, one or multiple payers, group or direct friend, participants and exclusions, equal/exact/percentage/weighted/itemized splits, optional tax, tip, service charge, and discounts, date, category, notes, tags, receipt. Edit, duplicate, cancel, and full version history (who changed what, when, with before/after amounts).
+Description, amount, currency, one or multiple payers, group or direct friend, participants and exclusions, equal/exact/percentage/weighted/itemized splits, optional tax, tip, service charge, and discounts, date, category, notes, tags, receipt. Edit, duplicate, cancel, and full version history (who changed what, when, with before/after amounts). The history covers every field the user can edit: description, amount, currency, date, category, notes, tags, split method, payers, shares, and itemized lines with their assignments, tax, service, tip and discount allocations. Saving an expense without changing anything does not create a new version or a history entry.
 
 Validate every split live in the form and again on the server. Show each participant's share and any rounding unit before saving. All writes go through the transactional database functions in Section 6.
 
@@ -334,9 +338,12 @@ Validate every split live in the form and again on the server. Show each partici
 
 - Partial and full repayments; methods: cash, bank transfer, UPI (manual record), other.
 - Optional UPI transaction reference field. **Do not** initiate, receive, or verify UPI payments; there is no payment-provider integration. A `upi://pay` deep link to open the payer's UPI app with the amount prefilled is acceptable if clearly labeled as a convenience, and the settlement is still recorded manually.
-- States: `pending`, `completed`, `cancelled`, `rejected`. Only `completed` affects balances.
+- States: `pending`, `completed`, `rejected`, `withdrawn`, `cancelled`. Only `completed` affects balances.
+  - `withdrawn`: a pending settlement called off before the receiver answered, by its payer or automatically when either person leaves the group. It never affected balances, so nothing is reversed.
+  - `cancelled`: a completed settlement cancelled afterwards by either person; its ledger effect is reversed.
+- "Settle up everything" does not record a second payment where one between the same two people, in the same group (or directly) and currency, is still pending; that one must be confirmed, rejected or withdrawn first.
 - Suggested payments come from debt simplification.
-- Every settlement belongs to one group or to the direct friend relationship, in one currency. A friend-level "settle up everything" action creates one settlement per group and currency where a balance exists, inside a single transaction, so each group's balances stay correct.
+- Every settlement belongs to one group or to the direct friend relationship, in one currency. A friend-level "settle up everything" action creates one settlement per group and currency where the two owe each other, inside a single transaction, so each group's balances stay correct. For a group that simplifies debts, the amount is the transfer between the two in the group's simplified plan (Section 7); for direct expenses and groups that don't simplify, it is the raw pairwise balance. Groups that either person has left are settled inside the group, not from here. The server computes the amounts; the database checks each one (raw: exactly the pairwise balance; simplified: the right direction and no more than either member's net).
 - Idempotency key prevents duplicate settlements.
 - Balances recompute automatically from the ledger after any change.
 
@@ -380,7 +387,7 @@ Validate every split live in the form and again on the server. Show each partici
 - Service worker with a minimal strategy: cache static assets and an offline fallback page only. **Never cache authenticated pages or API/financial responses.**
 - Show a clear offline banner and network error states. Disable submit buttons while pending; idempotency keys make retries safe.
 - No offline writes in v1. Never show an action as successful before the server confirms it.
-- Mobile-friendly forms: numeric keypad for amounts (`inputMode="decimal"`), touch targets ≥44px.
+- Mobile-friendly forms: numeric keypad for amounts (`inputMode="decimal"`); touch targets as in Section 9.
 
 ## 17. Testing
 

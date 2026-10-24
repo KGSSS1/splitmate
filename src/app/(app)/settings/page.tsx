@@ -71,7 +71,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <CardContent className="flex flex-col gap-3 sm:flex-row">
           <Link
             href={ROUTES.updatePassword}
-            className={cn(buttonVariants({ variant: "outline" }), "h-10")}
+            className={cn(buttonVariants({ variant: "outline" }), "h-11 md:h-9")}
           >
             <KeyRound aria-hidden />
             Change password

@@ -2,21 +2,281 @@
 
 ## Handoff note (latest first)
 
-### 2026-10-21: Staging deployment prepared (not yet deployed)
+### 2026-10-24: Review follow-ups, batch 3 (polish and accessibility)
 
-- **Guide:** `docs/deployment.md` walks through staging step by step: hosted Supabase plus the Vercel CLI, a phone test checklist, and troubleshooting. Nothing remote has been created or changed yet.
-- **Decisions (confirmed by the user):**
-  - Staging lives at a fixed alias, `splitmate-staging-<scope>.vercel.app`, moved after every `vercel deploy` with `vercel alias set`. `VERCEL_BRANCH_URL` only exists for Git-integration deployments, and this repo has no Git remote.
-  - `NEXT_PUBLIC_APP_URL` = the alias, set in both Vercel environments. A new project's first deployment is always production.
-  - Vercel Authentication is off for this project, so email links work from the Gmail app. The trade-off is written up in the guide.
-  - Supabase redirect list: the exact alias plus `https://*-<scope>.vercel.app/**`.
+- **Fixed:** M7, M8, M11, L3, L16, L17, L18, L19, L20, L22, L24, L26, L27, L28, L29, L32. The table is in `docs/reviews/review-M6.md` under "Batch 3".
+- **New dev dependency:** `@axe-core/playwright` 4.13.0 (exact). `tests/e2e/accessibility.spec.ts` runs axe on 17 app pages in both themes and both viewports, and checks keyboard focus on list rows, 44 px phone targets and the 375 px itemized form.
+- **Theme:**
+  - Light `--muted-foreground` is now `oklch(0.5 0 0)`.
+  - `--primary-emphasis` / `--destructive-emphasis` are for text on 10 % tints.
+  - Brand colours are unchanged.
+- **New modules:**
+  - `src/components/shared/row-link.ts`;
+  - `src/components/forms/redirect-notice.tsx`;
+  - `src/lib/groups/copy.ts`;
+  - `src/app/(app)/not-found.tsx`.
+- **Checks:**
+  - `db reset` ✓; types unchanged; lint, typecheck and build ✓; `db lint` and advisors ✓.
+  - Unit 507 ✓. Integration 25 ✓. pgTAP 476 ✓.
+  - Playwright 44/44 ✓ (`--workers=2`), including axe.
+  - In the first full run one phone test timed out waiting for "Create invite link" (the action was still pending after 5 s under load). It passed 3/3 alone, and the whole suite passed 44/44 when rerun.
+- **Not pushed yet:** batches 1–3 and migrations `20261023090000`, `20261023091000`, `20261023092000` wait for approval to go to staging.
+- **Known:** `npm audit` reports one high advisory in `body-parser`, reached via `shadcn` → `@modelcontextprotocol/sdk` → `express`. That is the shadcn CLI's MCP server, which the app never runs. It predates this work and is not fixed here.
+
+### 2026-10-24: Review follow-ups, batch 2 (test hardening)
+
+- **Fixed:** M17, M12, M13, M14, M15, M16, L33, L34, L37, L40, L41, L42. The table is in `docs/reviews/review-M6.md` under "Batch 2". Each new test was checked against the mutation it targets.
+- **M17 root cause:** state set after an `await` inside `startTransition` commits outside the transition, so errors rendered while the button was still disabled. Post-await updates are wrapped in a second `startTransition` (`use-action-submit`, `ActionButton`, invite panel, resend confirmation).
+- **Also:**
+  - `SubmitButton` is disabled until hydration: an early click used to GET the page with form values in the URL.
+  - "Cancel" on a pending payment now says it was withdrawn.
+  - L34 found that `090` #1 had silently switched to the new M3 guard; it now tests the routing guard again.
+  - fast-check runs with a fixed seed (`FC_SEED` overrides it).
+- **Tests added:**
+  - pgTAP `150_review_batch2` (13);
+  - unit: `use-action-submit`, `action-button`, `submit-button`, `fast-check-seed`, and `tests/unit/server/{auth,balances,settlement-actions,expense-friend-actions}`;
+  - the E2E simplified-plan test checks both suggestion lists.
+- **Checks:**
+  - `db reset` ✓; types unchanged; lint, typecheck and build ✓; `db lint` and advisors ✓.
+  - pgTAP 476 ✓. Integration 25 ✓. Playwright 38/38 ✓ (`--workers=2`).
+  - Unit 491 ✓, 10 runs in a row with zero failures.
+
+### 2026-10-24: Review follow-ups, batch 1 (correctness, trust and security)
+
+- **Decisions (product owner):** fix the chosen Medium/Low findings in three batches, each committed before the next; push to staging only after all three. The five suggested spec changes are in `docs/SPEC.md`, plus a `withdrawn` settlement status, a neutral friend-request reply (L8) and a per-currency maximum expense amount (M2). The batch tables are in `docs/reviews/review-M6.md` under "Follow-up batches".
+- **Batch 1 fixed** (each reproduced by a failing test first): withdrawn status, M1, M2, M3, M4, M5, M6, M9, L2, L7, L8, L9, L10, L11, L12, L13, L14.
+- **Migrations:**
+  - `20261023090000_settlement_withdrawn.sql`: `withdrawn` status and backfill; `cancel_settlement`, `end_membership` and `my_activity` updated; `settle_up_with_friend` refuses a context with a pending payment between the pair (L2).
+  - `20261023091000_expense_integrity.sql`: membership share locks on edit/cancel (M1); `currency_max_amount` and the ledger balance-range trigger (M2); `check_split_details` (M3); fuller snapshots and no-op saves (M4).
+  - `20261023092000_reads_and_privacy.sql`: `direct_expenses_with` (M6); `friend_email_requests`, neutral `send_friend_request`, `withdraw_friend_request`, apply-on-signup triggers (L7, L8); `group_names` and `left_group_name` (L9); no direct group UPDATE (L10); `group_invitation_list` and masked audit addresses (L11).
+- **App:** `requireLiveSession()` on sensitive actions (L12); HttpOnly/SameSite/Secure session cookies (L13); security headers (L14); `formatTimestamp` in the profile time zone (M9); "You borrowed / You lent" wording (M5); paged direct expenses on the friend page (M6).
+- **Tests:** pgTAP `140_review_batch1` (46); integration `review-races`, `direct-expenses`, `session-revocation`; unit tests for dates, live session, expense list, currency limits, history, friend view, lifecycle, activity, request outcome; E2E cookie and header checks.
+- **Checks:**
+  - `db reset` from scratch ✓ (18 migrations); generated types updated; `db lint` and advisors ✓.
+  - Lint, typecheck and build ✓.
+  - pgTAP 463 ✓. Integration 25 ✓. Playwright 38/38 ✓ (`--workers=2`).
+  - Unit 441/443: the two failures are the known M17 flakes (expense-form and settle-up-form retry tests). They are batch 2's first item, as decided.
+- **Not pushed:** the three migrations and the branch wait for batches 2 and 3, then approval.
+
+### 2026-10-22: Friend balances follow simplified plans (review H3, option 1)
+
+- **Decision (product owner):** in groups that simplify debts, friend-level views use the group's simplified plan instead of raw pairwise rows. Direct expenses and non-simplifying groups are unchanged. SPEC §2, §7, §9 and §11 are updated.
 - **Code:**
-  - `resolveAppUrl` (`src/lib/env.ts`) fills in `NEXT_PUBLIC_APP_URL` on previews when it is unset: `VERCEL_BRANCH_URL` first, then `VERCEL_URL`.
-  - `SUPABASE_SECRET_KEY` is optional until M9.
-  - `.vercelignore` added.
-  - Migration `20261021131000_service_role_grants.sql` plus pgTAP `100_service_role_grants`: hosted projects no longer add default Data API grants (Supabase changelog 45329).
-- **Rule for later migrations:** every new table needs explicit `GRANT`s for `authenticated` (as needed) **and** `service_role`. The default privileges from the new migration cover `service_role` for objects created by `postgres`.
+  - `src/lib/settlements/friend-view.ts`, pure:
+    - `friendContextBalances` builds raw rows for direct expenses and non-simplifying groups, and `simplifyDebts` transfers for simplifying groups;
+    - `settleableWith`.
+  - `src/server/balances.ts`:
+    - `loadContextBalances(client, viewerId)`, memoized per request as `getMyContextBalances`;
+    - it feeds the dashboard totals, "Balances by person", the friends list, the friend page breakdown (labelled "simplified") and "Settle up everything".
+  - Migration `20261022120000_simplified_friend_view.sql`:
+    - `my_pairwise_balances()` and `my_simplified_group_balances()`;
+    - `settle_up_with_friend` now takes server-computed `items` and validates each one: raw contexts must match exactly; simplified groups need the right direction and no more than either net (SM409 when stale).
+    - It re-checks the batch after the lock (review L1).
+    - The old signature is dropped.
+- **Tests:**
+  - New unit tests for the friend view (including a property test).
+  - pgTAP `120` rewritten: 44 assertions, including a group where the plan differs from raw.
+  - The H3 integration tests are now real tests (4).
+  - Reviewer A's differential test expects the engine's plan for groups; seeds 1–3 and the default pass.
+  - New E2E: "friend balances follow the group's simplified plan".
+- **Checks:**
+  - `db reset` from scratch ✓; types unchanged; `db lint` and advisors ✓.
+  - Lint, typecheck and build ✓.
+  - Unit 416 ✓. Integration 20 ✓. pgTAP 416 ✓.
+  - Playwright 33/34 in the full run (`--workers=2`). The one failure was the outsider check on `/groups/[id]/settings` timing out with an empty `<main>`: the page hadn't rendered and showed no data. It passed on both viewports when rerun.
+- **Note:** `my_activity`'s efficiency depends on table statistics. `130_review_m6` runs `analyze` after inserting its 1,500 rows, as autovacuum would; without statistics the planner scans every event.
+- **Staging (approved 2026-10-22):**
+  - Migration `20261022120000` was pushed after a dry run that showed only that file, with no seed. Remote history matches local (15 migrations).
+  - `db lint --linked` is clean. The advisors show the same 22 expected rule-0029 WARNs; the new read functions are SECURITY INVOKER.
+  - `staging` was pushed (`32871bf`). The Vercel preview `splitmate-pean1bi6b` was Ready in 34 s, and the branch URL points to it.
+  - **Smoke test** through the deployment URL: the landing page loads, and `/dashboard`, `/friends`, `/settle-up`, `/activity` and `/settlements` redirect to login.
+  - This machine's connection to Vercel drops intermittently, and the branch hostname's edge IPs are unreachable from here. Not checked while logged in.
 
+### 2026-10-22 — Independent review of M0–M6
+
+- **Review:** six fresh reviewers (accounting, database security, application security, spec conformance, test quality, code quality) worked from the repo and SPEC only. The merged, de-duplicated findings are in `docs/reviews/review-M6.md`: 0 Critical, 6 High, 18 Medium, 41 Low (the rejected-settlement test gap, first rated High, was re-rated Medium on the second pass; it is fixed too).
+- **Fixed (High), each reproduced by a failing test first:**
+  - **H1 open redirect** through a dot-segment `next` (`/.//host`): `safeNextPath` now decodes the path and rejects `.`/`..` segments, `//` and `\`. Unit cases plus an E2E test (the old code sent the browser off-site).
+  - **H2 removed member rejoining** through someone else's older link: `accept_invitation` refuses invitations created before the removal (migration `20261022060000_review_m6_fixes.sql`).
+  - **H4 activity feed cost:**
+    - `my_activity()` collects candidates from the caller's own data, and RLS still decides visibility.
+    - Visibility checks for a 25-row page dropped from ≥1,500 (one per event in the system) to <100.
+    - `(actor_id, created_at)` index.
+  - **H5 N+1:** `listMyGroups` makes one `my_group_balances()` call.
+  - **H6 / H7 test gaps:**
+    - rejected settlements are now checked against the ledger;
+    - RLS tests cover former members' settlements, item lines, item assignments and recurring occurrences;
+    - a generic "outsider sees nothing in any exposed table" check covers future tables. Each was verified against the mutation that used to pass.
+- **Reproduced, needs a decision: H3.** Simplify-on groups vs raw pairwise friend balances. After following the simplified plan, dashboards and friend pages still show a pairwise cycle, and "Settle up everything" unbalances the settled group. This is the SPEC §7 rule itself, so it is left as is. `tests/integration/simplified-friend-balances.test.ts` uses `it.fails` and will flip once it's fixed. The options are in the review.
+- **Kept from the review:** `tests/integration/differential-review.test.ts` (reviewer A). It checks the DB against the TS engine on random sequences, and passed seeds 1–8 (4,800 operations) plus a race test.
+- **Not done:** the Medium and Low findings wait for a decision; each has a recommendation in the review. M1 (leave vs cancel race) and M2 (balance sums beyond 2^53) are the first ones I'd fix.
+- **Checks after the fixes:**
+  - `db reset` from scratch ✓ (14 migrations; generated types unchanged); lint, typecheck and build ✓; `db lint` and advisors ✓.
+  - pgTAP 405 ✓ (+26). Integration 17 ✓, plus 2 expected-fail H3 reproductions.
+  - Playwright 32/32 ✓ with `--workers=2`. A default-worker run had starved the machine: the dev server grew to 2 GB and free RAM fell below 1 GB.
+  - Unit 408/409. The failing test is the pre-existing flaky retry test (review M17): it also failed on the baseline code under load and passes when run alone. Not fixed, because Medium findings wait for a decision.
+- **Staging (approved 2026-10-22):**
+  - Migration `20261022060000` was pushed to `splitmate-staging` after a dry run that showed only that file, with no seed. Remote history matches local (14 migrations).
+  - `db lint --linked` is clean, and the advisors show the same 22 expected rule-0029 WARNs. `my_activity` is SECURITY INVOKER, so it isn't flagged.
+  - `staging` was pushed (`c93e380`). The Vercel preview `splitmate-8eblnfza7` was Ready in 34 s, and the branch URL points to it.
+  - **Smoke test** through the deployment URL: the landing page loads, and `/dashboard`, `/activity` and `/settle-up` redirect to login.
+  - **Not checked from this machine:** the branch URL itself times out (in curl and the browser) because the Vercel edge IPs it resolves to (`64.29.17.195`, `216.198.79.195`) are unreachable from this network or VPN, while the deployment URL's edge works. Check it from a phone.
+
+### 2026-10-22 — M6 Balances, dashboard and settlements complete (staging deploy pending approval)
+
+- **Done:**
+  - **Migration** `20261021131200_balances_settle_up.sql`:
+    - Read functions over the ledger: `my_group_balances()`, `friend_group_balances(friend_id)` (pairwise per group, null = direct), `group_pairwise_balances(group_id)`. Sums only; RLS applies (SECURITY INVOKER).
+    - `create_settlement`'s body moved to `private.record_settlement` (same signature and grants). It now also returns readable SM422s for long UPI references/notes and future dates.
+    - `settle_up_with_friend(key, friend_id, method, upi_reference, note, settled_on)`: one settlement per group (and direct) and currency in one transaction. Owed to the caller → completed; owed by the caller → pending. Groups either person left are skipped. `settlements.batch_id` makes retries return the same IDs.
+  - **Pages:**
+    - Dashboard: owed / owing / net per currency, "Waiting for you to confirm" with Confirm/Reject, balances by person, group summaries, recent settlements, recent activity, quick actions (add expense, settle up, create group, invite a friend).
+    - Group **Balances** tab (`/groups/[id]/balances`): member nets, suggested repayments labelled "Simplified" when the toggle is on (raw pairwise debts when off), Record payment / Record as received links, and the group's settlements.
+    - **Settle up** (`/settle-up`): pick a group or friend, then person, who paid, amount (prefilled from suggestions or `?person&direction&amount&currency`), currency, method (cash, bank transfer, UPI recorded manually, other), optional UPI reference, date and note. The form says beforehand whether it completes now or waits for the other person.
+    - **Settlements** (`/settlements`, `/settlements/[id]`): waiting for you, waiting for others, paginated history; detail with status explanation, history and actions (confirm, reject, withdraw, cancel with reversal).
+    - **Friend page:** balance by group, "Settle up everything" (shows which parts complete now and which wait), settlements between you two.
+    - **Activity** (`/activity`, nav enabled): expense and settlement history from `audit_events`, worded from the viewer's side with "You owe / You lent".
+    - Settlements added to the secondary nav (phone menu, sidebar).
+- **Tests:**
+  - Unit/component: 400 (+29): suggestions (incl. a property test), available actions, settlement schemas, activity wording, settle-up form (suggestion fill, validation, idempotency key reused on retry).
+  - Integration: 14 (+3, `tests/integration/settlements.test.ts`): E2E steps 4–6 numbers via RPCs, settle up everything, outsider D denied.
+  - pgTAP: 379 (+33, `120_balances_settle_up`).
+  - Playwright: 30 runs pass (15 tests × desktop and Pixel 7, +4 runs).
+    - New `tests/e2e/settlements.spec.ts`: E2E steps 4–9 (dashboards, B's ₹100 confirmed by A, percentage expense, each member's activity and expense history, D denied on 8 pages and through direct table/RPC calls with D's own session), plus settle up everything → reject → cancel a completed one → simplify off.
+  - `supabase db lint` and local advisors are clean.
+- **Decisions to know:**
+  - **Pending settlements don't reduce balances or suggestions.** A payer could record the same debt twice; the friend page warns when some are pending. Revisit if testers trip over it.
+  - **Simplified transfers between people with no direct debt** create a pairwise ledger row, so friend balances (raw pairwise) can show a debt the group view has netted away. This follows SPEC §7.
+  - **E2E timing:** a full run right after `npm run build` failed 12 tests on 5-second navigation timeouts while the dev server recompiled every route; the rerun with a warm cache is the result above. Run E2E before `build`, or expect a cold first run.
+  - `tests/e2e/support/api.ts` signs in through supabase-js with the publishable key (local URL only) for API-level denial checks.
+- **Not done / known limitations:**
+  - No `upi://pay` deep link (we store no UPI IDs).
+  - Settlement dates are validated up to tomorrow (time zones), not per profile time zone.
+  - Activity shows expenses and settlements only, not membership changes.
+- **Staging:**
+  - The M6 migration was pushed to `splitmate-staging` on 2026-10-22 (approved; dry run first: only `20261021131200`, no seed). Remote history matches local (13 migrations), and `db lint --linked` is clean.
+  - Advisors (warn level) show 22 rule-0029 WARNs: the earlier 21 plus `settle_up_with_friend`. All expected. The new read functions are SECURITY INVOKER and not flagged.
+  - The `staging` branch was pushed on 2026-10-22 (approved, `45f2dae`). The Vercel preview built in 57 s (Ready), and the branch URL points to it.
+  - The staging URL loads without a Vercel login (HTTP 200), so Vercel Authentication appears to be off now. `/dashboard` and `/settle-up` redirect to `/login`. Not smoke-tested while logged in.
+  - Before friends can try it: email delivery (custom SMTP, or confirmation off on staging) and the Auth URL configuration. Both are dashboard settings for you to change.
+- **Next:** staging deploy of the MVP (with approval), then M7 recurring expenses and receipts.
+
+### 2026-10-21 — M5 Expenses complete
+
+- **Done:**
+  - **No migration.** The M2 RPCs, versioned rows, `audit_events` and `comments` policies already covered M5.
+  - **Split logic:**
+    - `src/lib/expenses/resolve.ts` turns form strings into total, payers, shares, rounding units and pairwise debts with `src/lib/accounting`. It is shared by the live preview and the Server Actions.
+    - `expenseFormSchema` runs it in `superRefine`.
+    - `buildExpensePayload` builds the RPC jsonb.
+  - **Form** (`src/components/expenses/expense-form.tsx`), mobile first:
+    - Fields: split with (group or friend), description, amount (`inputMode="decimal"`), currency, date (today in the profile's time zone), category, one or several payers, notes and tags.
+    - Split methods: equal, exact, percentage, shares, and itemized with tax, service, tip and discount (proportional or equal). Exclusions are tick boxes.
+    - **Live preview:** shares with a "+1 rounding unit" marker, who owes whom, and what to fix. Save stays disabled until the split is valid and while pending.
+    - One idempotency key per form, reused on retry.
+  - **Expense page:** paid by, shares (percentages and weights), items, notes and tags.
+    - **History:** who added, edited or cancelled it, with before → after for each changed field.
+    - **Comments:** add, and delete your own.
+    - **Actions:** edit, duplicate (`/expenses/new?from=`) and cancel with confirmation. Locked expenses explain why.
+  - **Group pages:** an Expenses tab (default, 20 per page, cancelled expenses labelled, "You lent / You owe" per row). Members moved to `/groups/[id]/members`.
+  - **Friend page:** "Add expense" and direct expenses with that friend.
+  - Add Expense is enabled in the nav.
+- **Tests:**
+  - 371 unit/component tests (+49), including:
+    - the resolver: SPEC §7 cases, every split method, payers, itemized, determinism;
+    - 12 expense-form component tests: save gating, messages, rounding marker, payers, itemized, description check, the idempotency key reused on retry, edit version.
+  - Integration tests: 11 (+3, `tests/integration/expenses.test.ts`). They exercise create → idempotent retry → edit (exact reversal rows plus new charges) → second edit → stale version refused → cancel (ledger nets to zero), an itemized bill, and a tampered payload being refused.
+  - pgTAP: 346, unchanged.
+  - Playwright: 26 runs (13 tests × desktop and Pixel 7).
+    - New: E2E step 3 (₹900 split equally → +₹600 / −₹300 / −₹300 on the ledger-backed Members tab), a comment, an edit to ₹1,200 by percentage (+₹900 / −₹600 / −₹300), a cancel (all settled up), and a duplicate.
+    - New: a direct expense split by exact amounts, with the friend balance from the ledger.
+  - Pagination was checked by hand with 23 expenses (page 2 of 2). The local DB was reset afterwards.
+- **Decisions to know:**
+  - **Group URLs:** `/groups/[id]` is now Expenses, and Members is `/groups/[id]/members`. Invitation acceptance still lands on `/groups/[id]?joined=1`.
+  - **E2E helpers** for groups are in `tests/e2e/support/groups.ts` (`joinThroughInvite`, `openGroupTab`, …). One M3 assertion (`default-email-links`) got a longer timeout: login → dashboard → onboarding is two redirects, which can exceed 5 s under full parallel load.
+  - **Categories** are preset keys (`src/lib/expenses/options.ts`). A stored value that isn't a preset (such as the seed's "Groceries") is kept as an option, so editing doesn't wipe it.
+  - **Expense history** shows the fields in `private.expense_snapshot`: description, amount, date, category, split, payers, shares. Notes, tags and items are not in the snapshot, so their changes don't appear in the diff.
+- **Not done / known limitations:**
+  - **Receipts are M7.**
+  - **Items:** each item is split equally among the people ticked for it. Weighted item assignments are supported by the engine and the database, but not by the form.
+  - **Direct expenses:** only the latest 50 with a friend are listed (from the latest 100 direct expenses). There is no pagination yet.
+  - **Display order:** participant order isn't stored, so the detail page lists shares by name. Rounding ties still follow the entry order used when saving.
+- **Staging:** M5 has no migration. `staging` was pushed on 2026-10-21 (with approval) and the Vercel preview built (Ready). Not smoke-tested in a browser: Vercel Authentication is still on.
+- **Next:** M6, balances, dashboard and settlements. Group balances already come from `group_balances()` on the Members tab; the simplify-debts suggestions and the settle-up flow are next.
+
+### 2026-10-21 — M4 Friends, groups and invitations complete
+
+- **Done:**
+  - **Migration** `20261021131100_friends_groups_invitations.sql`:
+    - `groups.group_type` (trip / home / couple / other).
+    - `create_group` gains type and simplify-debts arguments (old 3-argument signature dropped).
+    - New RPCs: `update_group` (admins, audited), `set_member_role` (the last admin can't be demoted), `send_friend_request` / `accept_friend_request` / `delete_friend_request`, `invitation_preview`, `my_group_invitations`.
+    - Postgres-backed rate limit table `private.rate_limit_events`: 30 friend-request lookups per hour, misses included.
+  - **Pages:**
+    - Friends: add by exact email, incoming/sent requests, list, and a detail page with per-currency balance from `friend_balances()` and shared groups.
+    - Groups: list with your balance and "Invitations for you", plus create.
+    - Group detail: Members tab with per-member ledger balances, admin actions, invite panel, open invitations with revoke, and leave. Settings tab for editing.
+    - Public `/invite/[token]` acceptance page.
+  - **Nav:** Groups and Friends are now enabled.
+  - **Invitations:**
+    - A shareable link (10 uses; expires after 1, 7 or 30 days) and email invitations (single-use and bound to the email; the app shows the link plus a `mailto:` draft, and sends no email itself).
+    - Link format: `/invite/{token}?group={id}`. A token used with another group's ID is refused.
+    - Sign-up from an invitation returns to it: an httpOnly cookie is turned into `/onboarding?next=…`.
+  - **Leave / remove** only at zero balance in every currency: the UI explains why when blocked, and the RPCs enforce it.
+- **Tests:**
+  - 322 unit/component tests (+53). pgTAP 346 (+67, new file `110_friends_groups`). Integration tests: 8, unchanged.
+  - 22 Playwright runs: 11 tests × desktop and Pixel 7. They include E2E steps 1–2 and a test that a token can't be used for another group and fails after revocation. Group settings editing is covered in the same spec.
+  - `supabase db lint` and advisors (warn level) are clean.
+- **Decisions to know:**
+  - **Local `supabase/config.toml` auth rate limits** raised to 200: `sign_in_sign_ups` and `token_verifications` (both were 30 per 5 minutes per IP). The full E2E run exceeded the old limits. Hosted settings are unaffected.
+  - **`ActionResult<TData>`** can now carry `data` (the new invitation link). `useActionSubmit` accepts any result type.
+  - **Shared E2E helpers** live in `tests/e2e/support/accounts.ts`; `newPersonPage()` opens a second person's browser context with the same device settings.
+  - **The nav reads `usePathname()` inside `<Suspense>`.** Without it, routes with dynamic segments fail prerendering.
+- **Not done / known limitations:**
+  - **No notifications UI yet (M8).** Friend-request, invitation and membership notifications are already written to the database.
+  - **Missing features:**
+    - Removing an accepted friend.
+    - Archiving or deleting a group.
+    - Real email delivery for invitations (optional per SPEC §15).
+  - **Opening the sign-up confirmation in a different browser** loses the way back to the invitation: the user lands on the dashboard and must reopen the link.
+  - **Logging in to an app page while not onboarded** goes to onboarding without the original `next` (pre-existing; invitation links are handled).
+- **Staging (approved 2026-10-21):**
+  - The M4 migration was pushed to `splitmate-staging` (no seed). The remote history matches local (12 migrations), and lint is clean.
+  - The advisors show 21 rule-0029 WARNs: the earlier 14 plus the 7 new RPCs. All are expected.
+  - The `staging` branch was pushed, and the Vercel preview built (Ready).
+  - Not smoke-tested in a browser: Vercel Authentication is still on.
+- **Next:** M5, expenses.
+  - Add an Expenses tab to the group pages (`src/components/groups/group-tabs.tsx`) and enable Add Expense in `nav-config.ts`.
+  - Direct expenses need an accepted friendship (`are_friends`).
+
+### 2026-10-21: Staging on Vercel Git integration (phone test pending)
+
+- **Setup:**
+  - GitHub repo `KGSSS1/splitmate` (public) is connected to the Vercel project `splitmate` (scope `kgsss1s-projects`).
+  - `main` deploys to Production; `staging` deploys as a Preview at `https://splitmate-git-staging-kgsss1s-projects.vercel.app`. Other branches get their own branch URLs.
+  - The guide is `docs/deployment.md`.
+- **App URL (`resolveAppUrl`, `src/lib/env.ts`):**
+  - Previews derive `NEXT_PUBLIC_APP_URL` from `VERCEL_BRANCH_URL`, falling back to `VERCEL_URL`. Don't set it in Preview.
+  - Production must set it explicitly; the build fails with a Vercel-specific message otherwise.
+- **State as of this note:**
+  - The `staging` preview builds (Ready).
+  - Both `main` builds failed with "NEXT_PUBLIC_APP_URL is missing". This is expected until production exists; don't push to `main` before then.
+  - Vercel Authentication is still **on**, and the Function Region is `iad1`.
+  - The Supabase staging project `splitmate-staging` (ref `vnjktzhyvfbnyfzppnkw`, ap-south-1) is linked, and all 11 migrations were pushed on 2026-10-21 without seed data.
+    - The remote migration history matches local.
+    - Lint is clean.
+    - The advisors show only the expected rule-0029 warnings (14 SECURITY DEFINER RPCs) and INFO unused-index notices.
+  - Auth settings, URL configuration and the phone test are not done yet.
+  - Email templates can't be edited without custom SMTP, so hosted staging uses Supabase's default templates (`?code=` links).
+    - `/auth/confirm` now exchanges those codes (PKCE) and keeps the `?token_hash=` path for custom templates later.
+    - A link opened in a different browser can't be exchanged: the login page explains it, and a sign-up is confirmed anyway.
+    - Covered by `tests/e2e/default-email-links.spec.ts` and `tests/unit/auth/confirm-route.test.ts`.
+  - Pushing from a network that blocks pooler port 5432 hangs; see the troubleshooting section of `docs/deployment.md`.
+- **Fixed:** `.vercelignore` patterns are anchored to the root (`/supabase/` had been dropping `src/lib/supabase/`); `tests/unit/vercelignore.test.ts` guards this. Node is pinned to `24.x`.
+- **Code:**
+  - `SUPABASE_SECRET_KEY` is optional until M9.
+  - Migration `20261021131000_service_role_grants.sql` plus pgTAP `100_service_role_grants`: hosted projects no longer add default Data API grants (Supabase changelog 45329).
+- **Rule for later migrations:** every new table needs explicit `GRANT`s for `authenticated` (as needed) **and** `service_role`.
 ### 2026-10-21 — M3 Auth and app shell complete (staging deployment not done)
 
 - **Done:**
@@ -162,27 +422,29 @@
 - [x] Empty dashboard reachable on mobile and desktop
 - [ ] First staging deployment (hosted Supabase + Vercel preview) — **needs approval**
 
-### M4 — Friends, groups, invitations
-- [ ] Friend requests by email; auto-friend on group join
-- [ ] Group CRUD, member management, admin roles
-- [ ] Invite links and email invitations; acceptance page `invite/[token]`
-- [ ] Leave/remove only at zero balance in every currency
-- [ ] E2E steps 1–2 pass
+### M4 — Friends, groups, invitations ✅
+- [x] Friend requests by email; auto-friend on group join
+- [x] Group CRUD (create, edit, list; types, default currency, simplify-debts), member management, admin roles. Archive/delete not in scope yet
+- [x] Invite links and email invitations; acceptance page `invite/[token]`; expiry and revoke
+- [x] Leave/remove only at zero balance in every currency
+- [x] E2E steps 1–2 pass, plus wrong-group and revoked-token tests
 
-### M5 — Expenses
-- [ ] Add/edit/duplicate/cancel expense (group and direct)
-- [ ] All split types, multi-payer, itemized with tax/tip/discount
-- [ ] Live share preview with rounding indicator; server-side recomputation
-- [ ] Expense detail, version history (before/after), comments
-- [ ] E2E step 3 passes; edit/cancel reflected in balances
+### M5 — Expenses ✅
+- [x] Add/edit/duplicate/cancel expense (group and direct)
+- [x] All split types, multi-payer, itemized with tax/tip/discount
+- [x] Live share preview with rounding indicator; server-side recomputation
+- [x] Expense detail, version history (before/after), comments
+- [x] Group expense list with pagination
+- [x] E2E step 3 passes; edit/cancel reflected in balances
 
-### M6 — Balances, dashboard, settlements
-- [ ] Group and friend balances (per currency)
-- [ ] Dashboard: owe / owed / net, by person, groups, recent activity and settlements, quick actions
-- [ ] Simplify-debts toggle and suggested transfers
-- [ ] Settle-up flow with pending/completed/rejected/cancelled states; settle-up-everything
-- [ ] Settlement history
-- [ ] E2E steps 4–9 pass; staging deploy of the MVP — **needs approval**
+### M6 — Balances, dashboard, settlements (staging deploy pending approval)
+- [x] Group and friend balances (per currency)
+- [x] Dashboard: owe / owed / net, by person, groups, recent activity and settlements, quick actions
+- [x] Simplify-debts toggle and suggested transfers
+- [x] Settle-up flow with pending/completed/rejected/cancelled states; settle-up-everything
+- [x] Settlement history
+- [x] E2E steps 4–9 pass
+- [ ] Staging deploy of the MVP — **needs approval**
 
 ### M7 — Recurring expenses and receipts
 - [ ] Recurring templates (frequency, dates, timezone, resolved shares); pause/resume/cancel

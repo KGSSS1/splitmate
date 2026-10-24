@@ -5,6 +5,8 @@ import { getRouteAccess, ROUTES } from "@/lib/auth/routes";
 import { getClientEnv } from "@/lib/env";
 import type { Database } from "@/types/database.types";
 
+import { SESSION_COOKIE_OPTIONS } from "./cookie-options";
+
 /**
  * Refreshes the Supabase session on every matched request and redirects by
  * route access (SPEC §8). The redirects are a convenience only: pages and
@@ -18,6 +20,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return request.cookies.getAll();

@@ -51,4 +51,8 @@ export interface Balance {
   amount: number;
 }
 
-export type SettlementStatus = "pending" | "completed" | "cancelled" | "rejected";
+/**
+ * `withdrawn`: a pending settlement called off before the receiver answered (never
+ * counted). `cancelled`: a completed settlement called off afterwards (reversed).
+ */
+export type SettlementStatus = "pending" | "completed" | "rejected" | "withdrawn" | "cancelled";

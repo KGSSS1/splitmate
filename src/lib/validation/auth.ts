@@ -23,6 +23,7 @@ const newPasswordSchema = z
 export const signUpSchema = z.object({
   email: emailSchema,
   password: newPasswordSchema,
+  next: z.string().max(2048).optional(),
 });
 
 export const signInSchema = z.object({
