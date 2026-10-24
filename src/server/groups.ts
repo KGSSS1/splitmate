@@ -5,7 +5,7 @@ import type { CounterpartyBalance } from "@/lib/accounting/summary";
 import { type GroupType, toGroupType } from "@/lib/groups/options";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/server/auth";
-import { getPersonCards, nameOf } from "@/server/people";
+import { getGroupNames, getPersonCards, nameOf } from "@/server/people";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -46,7 +46,13 @@ export interface OpenInvitation {
 
 export type GroupView =
   | { access: "member"; group: GroupSettings; isAdmin: boolean; members: GroupMember[]; invitations: OpenInvitation[] }
-  | { access: "former"; group: GroupSettings };
+  | { access: "former"; group: FormerGroup };
+
+/** What a former member sees of a group: its name as it was when they left (SPEC §8, review L9). */
+export interface FormerGroup {
+  id: string;
+  name: string;
+}
 
 const GROUP_COLUMNS = "id, name, description, group_type, default_currency, simplify_debts" as const;
 
@@ -131,12 +137,16 @@ export async function getGroup(groupId: string): Promise<GroupView | null> {
     supabase.from("group_members").select("role, left_at").eq("group_id", groupId).eq("user_id", user.id).maybeSingle(),
   ]);
   if (groupResult.error || membershipResult.error) throw new Error("Could not load this group.");
-  if (!groupResult.data || !membershipResult.data) return null;
+  if (!membershipResult.data) return null;
+  if (membershipResult.data.left_at) {
+    const names = await getGroupNames(supabase, [groupId]);
+    return { access: "former", group: { id: groupId, name: names.get(groupId) ?? "A group you left" } };
+  }
+  if (!groupResult.data) return null;
 
   const group = toSettings(groupResult.data);
-  if (membershipResult.data.left_at) return { access: "former", group };
 
-  const now = new Date().toISOString();
+  const now = Date.now();
   const [membersResult, invitationsResult, balances] = await Promise.all([
     supabase
       .from("group_members")
@@ -144,19 +154,15 @@ export async function getGroup(groupId: string): Promise<GroupView | null> {
       .eq("group_id", groupId)
       .is("left_at", null)
       .order("joined_at"),
-    supabase
-      .from("group_invitations")
-      .select("id, created_by, invited_email, max_uses, use_count, expires_at, created_at")
-      .eq("group_id", groupId)
-      .is("revoked_at", null)
-      .gt("expires_at", now)
-      .order("created_at", { ascending: false })
-      .limit(50),
+    // Invitee addresses come back masked unless the caller created the invitation or is an admin (L11).
+    supabase.rpc("group_invitation_list", { p_group_id: groupId }),
     getGroupBalances(supabase, groupId),
   ]);
   if (membersResult.error || invitationsResult.error) throw new Error("Could not load this group.");
 
-  const invitations = invitationsResult.data.filter((row) => row.use_count < row.max_uses);
+  const invitations = invitationsResult.data
+    .filter((row) => row.revoked_at === null && Date.parse(row.expires_at) > now && row.use_count < row.max_uses)
+    .slice(0, 50);
   const cards = await getPersonCards(supabase, [
     ...membersResult.data.map((row) => row.user_id),
     ...invitations.map((row) => row.created_by),

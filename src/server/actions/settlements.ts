@@ -13,9 +13,10 @@ import {
   settleUpEverythingSchema,
 } from "@/lib/validation/settlements";
 import { type ActionResult, invalidInput, rpcFailure } from "@/server/action-result";
-import { requireOnboardedProfile } from "@/server/auth";
+import { requireLiveSession, requireOnboardedProfile } from "@/server/auth";
 import { getMyContextBalances } from "@/server/balances";
 import { getFriend } from "@/server/friends";
+import { pendingContextKeysWith } from "@/server/settlements";
 
 const SETTLEMENTS = "/settlements";
 
@@ -75,6 +76,7 @@ export async function settleUpEverything(input: unknown): Promise<ActionResult> 
     await getMyContextBalances(),
     friendId,
     new Set(friend.sharedGroups.map((group) => group.id)),
+    await pendingContextKeysWith(friendId),
   ).map((row) => ({ group_id: row.groupId, currency: row.currency, amount: row.amount }));
   if (items.length === 0) return { ok: false, error: "There is nothing to settle with this friend." };
 
@@ -115,6 +117,8 @@ async function transition(input: unknown, fn: Transition, message: string): Prom
   if (!parsed.success) return invalidInput(parsed.error);
 
   await requireOnboardedProfile();
+  // Confirming or cancelling money needs a session Supabase Auth still knows (L12).
+  await requireLiveSession();
   const supabase = await createClient();
   const { error } = await supabase.rpc(fn, { p_settlement_id: parsed.data.settlementId });
   if (error) return rpcFailure(error);

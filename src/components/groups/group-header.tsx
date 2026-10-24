@@ -3,13 +3,30 @@ import Link from "next/link";
 
 import { ROUTES } from "@/lib/auth/routes";
 import { GROUP_TYPE_LABELS } from "@/lib/groups/options";
-import type { GroupSettings } from "@/server/groups";
+import type { FormerGroup, GroupSettings } from "@/server/groups";
 
 import { GroupTabs } from "./group-tabs";
 import { GroupTypeIcon } from "./group-type-icon";
 
-/** Back link, name, type and settings summary, and (for members) the tab bar. */
-export function GroupHeader({ group, showTabs = true }: { group: GroupSettings; showTabs?: boolean }) {
+/**
+ * Back link, name, type and settings summary, and (for members) the tab bar.
+ * A former member only gets the name as it was when they left (review L9).
+ */
+export function GroupHeader({ group, showTabs = true }: { group: GroupSettings | FormerGroup; showTabs?: boolean }) {
+  if (!("groupType" in group)) {
+    return (
+      <div className="grid gap-4">
+        <Link
+          href={ROUTES.groups}
+          className="inline-flex min-h-11 items-center gap-1 justify-self-start text-sm text-muted-foreground hover:text-foreground md:min-h-0"
+        >
+          <ArrowLeft aria-hidden className="size-4" />
+          All groups
+        </Link>
+        <h1 className="text-2xl font-semibold tracking-tight break-words md:text-3xl">{group.name}</h1>
+      </div>
+    );
+  }
   return (
     <div className="grid gap-4">
       <Link

@@ -1,7 +1,7 @@
 -- RLS: what a current member, a non-member, a removed member, a direct-expense
 -- friend and an anonymous user can see and do, table by table.
 begin;
-select plan(70);
+select plan(71);
 
 -- ---------------------------------------------------------------- setup (as postgres)
 select tests.create_user(name) from unnest(array['alice', 'bob', 'carol', 'dave', 'erin']) as name;
@@ -106,7 +106,10 @@ select throws_ok(format($$ select public.create_expense(gen_random_uuid(), %L, '
 
 -- ---------------------------------------------------------------- removed member (carol)
 select tests.authenticate_as('carol');
-select is((select count(*)::int from public.groups), 1, 'removed member: still sees the group they have history in');
+-- Review M6 L9: only current members read the group; history pages use group_names().
+select is((select count(*)::int from public.groups), 0, 'removed member: no longer reads the group record');
+select is((select name from public.group_names(array[tests.group_id('RLS group')])), 'RLS group',
+          'removed member: gets the group''s name for their history');
 select is((select count(*)::int from public.expenses), 1, 'removed member: sees only the expense they were part of');
 select is((select count(*)::int from public.ledger_entries), 2, 'removed member: sees only their own ledger rows');
 select is((select count(*)::int from public.group_members), 1, 'removed member: sees only their own membership row');
@@ -155,8 +158,8 @@ select throws_ok(format($$ insert into public.expenses (created_by, updated_by, 
                         tests.uid('bob'), tests.uid('bob')),
                  '42501', null, 'member: cannot insert expenses directly');
 select throws_ok($$ delete from public.ledger_entries $$, '42501', null, 'member: cannot delete ledger entries');
-with u as (update public.groups set name = 'Hacked' returning 1)
-select is(count(*)::int, 0, 'member: non-admins cannot rename the group') from u;
+-- Review M6 L10: nobody updates groups directly; settings go through update_group.
+select throws_ok($$ update public.groups set name = 'Hacked' $$, '42501', null, 'member: cannot update the group row directly');
 with u as (update public.profiles set display_name = 'Bobby' returning 1)
 select is(count(*)::int, 1, 'member: can update their own profile') from u;
 with u as (update public.profiles set display_name = 'Hacked' where id = tests.uid('alice') returning 1)
@@ -174,8 +177,9 @@ select is((select count(*)::int from public.groups), 0, 'friend: sees no groups 
 
 -- ---------------------------------------------------------------- admin (alice)
 select tests.authenticate_as('alice');
-with u as (update public.groups set simplify_debts = false returning 1)
-select is(count(*)::int, 1, 'admin: can change group settings') from u;
+-- Review M6 L10: admins change settings through update_group (audited), never the row itself.
+select throws_ok($$ update public.groups set simplify_debts = false $$, '42501', null,
+                 'admin: cannot update the group row directly');
 select lives_ok(format($$ insert into public.comments (expense_id, author_id, body) values (%L, %L, 'Paid by cash') $$,
                        tests.expense_id('rls-d1'), tests.uid('alice')),
                 'friend in a direct expense: can comment on it');

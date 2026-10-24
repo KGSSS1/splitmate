@@ -77,14 +77,14 @@ select is((select count(*)::int from public.notifications where user_id = tests.
 
 -- ---------------------------------------------------------------- pending settlement after leaving
 -- Bob records a pending payment in "Pair" (no balance effect), then leaves; the pending
--- settlement is cancelled automatically, so it can never be confirmed for a former member.
+-- settlement is withdrawn automatically, so it can never be confirmed for a former member.
 select tests.authenticate_as('bob');
 select public.create_settlement(tests.uid('pair-pending'), tests.group_id('Pair'), tests.uid('bob'), tests.uid('alice'), 500, 'INR');
 select lives_ok(format($$ select public.leave_group(%L) $$, tests.group_id('Pair')),
                 'a pending settlement does not block leaving (it has no balance effect)');
 select tests.authenticate_as('alice');
 select throws_ok(format($$ select public.confirm_settlement(%L) $$, tests.settlement_id('pair-pending')), 'SM409', null,
-                 'a settlement cannot be confirmed once a party has left the group (it was cancelled)');
+                 'a settlement cannot be confirmed once a party has left the group (it was withdrawn)');
 
 -- ---------------------------------------------------------------- outsiders and rejoining
 select tests.authenticate_as('dave');

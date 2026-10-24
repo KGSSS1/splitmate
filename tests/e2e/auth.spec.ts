@@ -114,3 +114,17 @@ test("a dot-segment `next` can't send a signed-in user to another site", async (
   await expect(other).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
   await other.context().close();
 });
+
+// Review M6 L13: nothing in the browser reads the session, so its cookie is HttpOnly
+// (an injected script can't steal the refresh token).
+test("the session cookie is HttpOnly", async ({ page }) => {
+  const account = newAccount();
+  await signUpAndVerify(page, account);
+  const session = (await page.context().cookies()).filter((cookie) => /^sb-.*-auth-token/.test(cookie.name));
+  expect(session.length).toBeGreaterThan(0);
+  for (const cookie of session) {
+    expect(cookie.httpOnly, cookie.name).toBe(true);
+    expect(cookie.sameSite, cookie.name).toBe("Lax");
+  }
+  expect(await page.evaluate(() => document.cookie)).not.toMatch(/sb-.*-auth-token/);
+});

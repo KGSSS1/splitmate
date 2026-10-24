@@ -10,7 +10,7 @@ import type { Transfer } from "@/lib/settlements/simplify";
 import { suggestedTransfers } from "@/lib/settlements/suggestions";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/server/auth";
-import { getPersonCards, nameOf } from "@/server/people";
+import { getGroupNames, getPersonCards, nameOf } from "@/server/people";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -87,11 +87,7 @@ export interface NamedContextBalance extends ContextBalance {
 export async function getFriendContextBalances(friendId: string): Promise<NamedContextBalance[]> {
   const rows = (await getMyContextBalances()).filter((row) => row.counterpartyId === friendId);
   const groupIds = [...new Set(rows.flatMap((row) => (row.groupId ? [row.groupId] : [])))];
-  const groups = groupIds.length
-    ? await (await createClient()).from("groups").select("id, name").in("id", groupIds)
-    : { data: [], error: null };
-  if (groups.error) throw new Error("Could not load your balances.");
-  const names = new Map(groups.data.map((group) => [group.id, group.name]));
+  const names = await getGroupNames(await createClient(), groupIds);
   return rows.map((row) => ({
     ...row,
     groupName: row.groupId ? (names.get(row.groupId) ?? "A group") : null,

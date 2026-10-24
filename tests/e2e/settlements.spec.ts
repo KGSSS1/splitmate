@@ -133,8 +133,8 @@ test("dashboards, a confirmed repayment, a percentage expense, history, and an o
         "You added “Dinner at the shack” (₹900.00)",
       ],
     ],
-    [binaPage, [`${asha} added “Groceries” (₹1,000.00)`, `You recorded paying ${asha} ₹100.00`, "You owe ₹300.00"]],
-    [chetanPage, [`${asha} added “Groceries” (₹1,000.00)`, "You owe ₹500.00", `${bina} recorded paying ${asha} ₹100.00`]],
+    [binaPage, [`${asha} added “Groceries” (₹1,000.00)`, `You recorded paying ${asha} ₹100.00`, "You borrowed ₹300.00"]],
+    [chetanPage, [`${asha} added “Groceries” (₹1,000.00)`, "You borrowed ₹500.00", `${bina} recorded paying ${asha} ₹100.00`]],
   ];
   for (const [memberPage, lines] of history) {
     await memberPage.goto("/activity");

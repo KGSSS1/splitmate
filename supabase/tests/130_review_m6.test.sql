@@ -98,7 +98,8 @@ select set_eq(
   $$ select id from public.audit_events
       where entity_type in ('expense', 'settlement')
         and action in ('expense.created', 'expense.updated', 'expense.cancelled', 'settlement.created',
-                       'settlement.confirmed', 'settlement.rejected', 'settlement.cancelled') $$,
+                       'settlement.confirmed', 'settlement.rejected', 'settlement.cancelled',
+                       'settlement.withdrawn') $$,
   'my_activity shows exactly what RLS lets the caller see');
 select ok((select count(*) from public.my_activity(25, 0) where group_id = tests.group_id('Noise')) = 0
           and (select count(*) from public.my_activity(25, 0) where entity_id = tests.expense_id('alice-dinner')) = 1,

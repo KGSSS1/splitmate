@@ -29,11 +29,14 @@ export function SettleEverythingForm({
   friendId,
   friendName,
   balances,
+  waiting = [],
 }: {
   friendId: string;
   friendName: string;
   /** Only groups you are both still in, plus direct balances. */
   balances: readonly NamedContextBalance[];
+  /** Left out: a payment between you two here is still waiting for confirmation. */
+  waiting?: readonly NamedContextBalance[];
 }) {
   // A fresh key after each success, so settling up again later is a new batch.
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
@@ -54,6 +57,16 @@ export function SettleEverythingForm({
   return (
     <form noValidate onSubmit={form.handleSubmit(submit)} className="grid gap-4">
       <FormStatus error={error} success={success} />
+      {waiting.length > 0 ? (
+        <ul className="grid gap-1 text-sm text-muted-foreground" aria-label="Not included">
+          {waiting.map((balance) => (
+            <li key={`${balance.groupId ?? "direct"}-${balance.currency}`}>
+              Not included: {balance.groupName ? `in ${balance.groupName}` : "outside groups"}, a payment between you
+              two is waiting to be confirmed. Confirm, reject or withdraw it first.
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {balances.length > 0 ? (
         <>
           <ul className="grid gap-2 text-sm" aria-label="What will be settled">

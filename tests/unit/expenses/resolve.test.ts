@@ -321,3 +321,18 @@ describe("percent and tags", () => {
     expect(parseTags(" goa, beach ,, goa ")).toEqual(["goa", "beach"]);
   });
 });
+
+describe("maximum expense amount per currency (SPEC §7, review M2)", () => {
+  it("refuses one expense above the currency's limit, and allows the limit itself", () => {
+    expect(issues(values({ amount: "10000000.01" }))).toEqual([
+      { path: "amount", message: "One expense in INR can be at most ₹1,00,00,000.00." },
+    ]);
+    expect(resolveExpense(values({ amount: "10000000" })).ok).toBe(true);
+  });
+
+  it("uses each currency's own limit and decimals", () => {
+    expect(issues(values({ amount: "15000001", currency: "JPY" }))[0]?.message).toMatch(/^One expense in JPY can be at most /);
+    expect(resolveExpense(values({ amount: "15000000", currency: "JPY" })).ok).toBe(true);
+    expect(issues(values({ amount: "50000.001", currency: "KWD" }))[0]?.path).toBe("amount");
+  });
+});

@@ -39,7 +39,7 @@ export function SettlementList({
   return (
     <ul className="divide-y rounded-xl border" aria-label={label}>
       {items.map((item) => {
-        const inactive = item.status === "cancelled" || item.status === "rejected";
+        const inactive = item.status !== "pending" && item.status !== "completed";
         const answer = showActions && item.status === "pending" && item.actions.includes("confirm");
         return (
           <li key={item.id} className="grid">

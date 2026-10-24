@@ -50,6 +50,46 @@ describe("expense history", () => {
     ]);
   });
 
+  it("lists notes, tags and itemized lines too (SPEC §10, review M4)", () => {
+    const item = (name: string, amount: number, assignees: string[]) => ({
+      kind: "item",
+      name,
+      amount,
+      allocation: null,
+      assignees,
+    });
+    const before = parseSnapshot(
+      snapshot({ notes: null, tags: [], items: [item("Pizza", 60000, [A, B]), item("Salad", 30000, [B])] }),
+    );
+    const after = parseSnapshot(
+      snapshot({
+        version: 2,
+        notes: "Bring cash",
+        tags: ["goa", "beach"],
+        items: [
+          item("Pizza", 60000, [A]),
+          item("Salad", 30000, [B]),
+          { kind: "tip", name: "Tip", amount: 5000, allocation: "equal", assignees: [] },
+        ],
+      }),
+    );
+    expect(before && after && describeChanges(before, after, nameOf)).toEqual([
+      { label: "Notes", before: "None", after: "Bring cash" },
+      { label: "Tags", before: "None", after: "goa, beach" },
+      {
+        label: "Items",
+        before: "Pizza ₹600.00 (Asha, Bina); Salad ₹300.00 (Bina)",
+        after: "Pizza ₹600.00 (Asha); Salad ₹300.00 (Bina); Tip ₹50.00 (split equally)",
+      },
+    ]);
+  });
+
+  it("doesn't report fields an older snapshot didn't record", () => {
+    const old = parseSnapshot(snapshot());
+    const current = parseSnapshot(snapshot({ version: 2, notes: "Hi", tags: ["x"], items: [] }));
+    expect(old && current && describeChanges(old, current, nameOf)).toEqual([]);
+  });
+
   it("reports nothing for an unchanged save", () => {
     const same = parseSnapshot(snapshot());
     expect(same && describeChanges(same, same, nameOf)).toEqual([]);

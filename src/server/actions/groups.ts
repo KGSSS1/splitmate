@@ -13,7 +13,7 @@ import {
   updateGroupSchema,
 } from "@/lib/validation/groups";
 import { type ActionResult, invalidInput, rpcFailure } from "@/server/action-result";
-import { requireOnboardedProfile } from "@/server/auth";
+import { requireLiveSession, requireOnboardedProfile } from "@/server/auth";
 
 export async function createGroup(input: unknown): Promise<ActionResult> {
   const parsed = createGroupSchema.safeParse(input);
@@ -60,6 +60,7 @@ export async function leaveGroup(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return invalidInput(parsed.error);
 
   await requireOnboardedProfile();
+  await requireLiveSession();
   const supabase = await createClient();
   const { error } = await supabase.rpc("leave_group", { p_group_id: parsed.data.groupId });
   if (error) return rpcFailure(error);
@@ -73,6 +74,7 @@ export async function removeMember(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return invalidInput(parsed.error);
 
   await requireOnboardedProfile();
+  await requireLiveSession();
   const supabase = await createClient();
   const { error } = await supabase.rpc("remove_group_member", {
     p_group_id: parsed.data.groupId,
@@ -89,6 +91,7 @@ export async function setMemberRole(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return invalidInput(parsed.error);
 
   await requireOnboardedProfile();
+  await requireLiveSession();
   const supabase = await createClient();
   const { error } = await supabase.rpc("set_member_role", {
     p_group_id: parsed.data.groupId,

@@ -8,35 +8,42 @@ import { GroupTypeIcon } from "@/components/groups/group-type-icon";
 import { SettleEverythingForm } from "@/components/settlements/settle-everything-form";
 import { SettlementList } from "@/components/settlements/settlement-list";
 import { BalanceText } from "@/components/shared/balance-text";
+import { Pager } from "@/components/shared/pager";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROUTES } from "@/lib/auth/routes";
 import { GROUP_TYPE_LABELS } from "@/lib/groups/options";
+import { formatTimestamp } from "@/lib/expenses/dates";
 import { formatMoney } from "@/lib/money/format";
 import { settleableWith } from "@/lib/settlements/friend-view";
 import { cn } from "@/lib/utils";
+import { expensePageSchema } from "@/lib/validation/expenses";
 import { uuidSchema } from "@/lib/validation/groups";
 import { requireOnboardedProfile } from "@/server/auth";
 import { getFriendContextBalances } from "@/server/balances";
 import { listDirectExpenses } from "@/server/expenses";
 import { getFriend } from "@/server/friends";
-import { listSettlements } from "@/server/settlements";
+import { listSettlements, pendingContextKeysWith } from "@/server/settlements";
 
 export const metadata: Metadata = { title: "Friend" };
 
-export default async function FriendPage({ params }: PageProps<"/friends/[friendId]">) {
-  const [{ friendId }, profile] = await Promise.all([params, requireOnboardedProfile()]);
+export default async function FriendPage({ params, searchParams }: PageProps<"/friends/[friendId]">) {
+  const [{ friendId }, query, profile] = await Promise.all([params, searchParams, requireOnboardedProfile()]);
+  const page = expensePageSchema.parse(query.page);
   if (!uuidSchema.safeParse(friendId).success) notFound();
   const friend = await getFriend(friendId);
   if (!friend) notFound();
-  const [direct, contextBalances, settlements] = await Promise.all([
-    listDirectExpenses(friendId),
+  const [direct, contextBalances, settlements, pendingKeys] = await Promise.all([
+    listDirectExpenses(friendId, page),
     getFriendContextBalances(friendId),
     listSettlements({ kind: "friend", friendId }),
+    pendingContextKeysWith(friendId),
   ]);
   // A group either of you has left is settled inside that group, not from here.
   const shared = new Set(friend.sharedGroups.map((group) => group.id));
-  const settleable = settleableWith(contextBalances, friend.id, shared);
+  const settleable = settleableWith(contextBalances, friend.id, shared, pendingKeys);
+  // Debts with a payment still waiting for an answer: settled once that one is confirmed or withdrawn.
+  const waiting = settleableWith(contextBalances, friend.id, shared).filter((row) => !settleable.includes(row));
   const pendingCount = settlements.items.filter((item) => item.status === "pending").length;
 
   return (
@@ -54,7 +61,7 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
           {friend.since ? (
             <p className="text-muted-foreground">
               Friends since{" "}
-              {new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(friend.since))}
+              {formatTimestamp(friend.since, profile.timezone, { dateOnly: true })}
             </p>
           ) : null}
         </div>
@@ -116,7 +123,12 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SettleEverythingForm friendId={friend.id} friendName={friend.displayName} balances={settleable} />
+          <SettleEverythingForm
+            friendId={friend.id}
+            friendName={friend.displayName}
+            balances={settleable}
+            waiting={waiting}
+          />
         </CardContent>
       </Card>
 
@@ -135,11 +147,17 @@ export default async function FriendPage({ params }: PageProps<"/friends/[friend
         <h2 id="direct-heading" className="text-lg font-semibold">
           Expenses between you two
         </h2>
-        {direct.length === 0 ? (
+        {direct.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">No direct expenses yet. Group expenses are in each group.</p>
         ) : (
-          <ExpenseList items={direct} label="Direct expenses" />
+          <ExpenseList items={direct.items} label="Direct expenses" />
         )}
+        <Pager
+          base={`${ROUTES.friends}/${friend.id}`}
+          page={page}
+          pageCount={direct.pageCount}
+          label="Direct expense pages"
+        />
       </section>
 
       <section aria-labelledby="shared-groups-heading" className="grid gap-3">

@@ -80,7 +80,7 @@ test("A adds ₹900 split equally (E2E step 3); an edit and a cancel are reflect
   await expect(binaRow).toHaveCount(1);
   await expect(binaRow).toContainText("Dinner at the shack");
   await expect(binaRow).toContainText(`${asha} paid ₹900.00`);
-  await expect(binaRow).toContainText("You owe ₹300.00");
+  await expect(binaRow).toContainText("You borrowed ₹300.00");
 
   // B comments.
   await binaRow.getByRole("link").click();

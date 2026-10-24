@@ -101,8 +101,8 @@ select is(count(*)::int, 0, '#4 a removed member cannot edit their old comments'
 select throws_ok(format($$ select public.cancel_settlement(%L) $$, (select id from rc_pending)), 'SM403', null,
                  '#5 a removed member cannot cancel a group settlement');
 reset role;
-select is((select status from public.settlements where id = (select id from rc_pending)), 'cancelled',
-          '#5 a member''s pending settlements are cancelled when they leave the group');
+select is((select status from public.settlements where id = (select id from rc_pending)), 'withdrawn',
+          '#5 a member''s pending settlements are withdrawn when they leave the group');
 select is((select count(*)::int from public.notifications
             where settlement_id = (select id from rc_pending) and type = 'settlement_cancelled' and user_id = tests.uid('rc')), 1,
           '#5 the removed member is told their pending settlement was cancelled');

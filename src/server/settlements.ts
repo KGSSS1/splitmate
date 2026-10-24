@@ -3,12 +3,13 @@ import "server-only";
 import { type AuditEventRow, describeActivity, type ActivityItem } from "@/lib/activity/describe";
 import type { SettlementStatus } from "@/lib/accounting/types";
 import { assertMinorAmount } from "@/lib/money/amount";
+import { contextKey } from "@/lib/settlements/friend-view";
 import { availableSettlementActions, type SettlementAction } from "@/lib/settlements/lifecycle";
 import { isSettlementStatus, SETTLEMENTS_PAGE_SIZE } from "@/lib/settlements/options";
 import { createClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validation/groups";
 import { requireUser } from "@/server/auth";
-import { getPersonCards, nameOf } from "@/server/people";
+import { getGroupNames, getPersonCards, nameOf } from "@/server/people";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -40,7 +41,7 @@ export interface SettlementPage {
 }
 
 const SETTLEMENT_COLUMNS =
-  "id, group_id, payer_id, receiver_id, amount, currency, method, upi_reference, note, settled_on, status, created_by, created_at, groups!settlements_group_id_fkey(name)" as const;
+  "id, group_id, payer_id, receiver_id, amount, currency, method, upi_reference, note, settled_on, status, created_by, created_at" as const;
 
 interface SettlementRow {
   id: string;
@@ -56,7 +57,6 @@ interface SettlementRow {
   status: string;
   created_by: string;
   created_at: string;
-  groups: { name: string } | null;
 }
 
 /** Groups the viewer is currently in: former members cannot act on a group's settlements. */
@@ -72,12 +72,16 @@ async function currentGroupIds(supabase: Client, userId: string): Promise<Set<st
 
 async function toItems(supabase: Client, viewerId: string, rows: readonly SettlementRow[]): Promise<SettlementItem[]> {
   if (rows.length === 0) return [];
-  const [cards, groups] = await Promise.all([
+  const [cards, groups, groupNames] = await Promise.all([
     getPersonCards(
       supabase,
       rows.flatMap((row) => [row.payer_id, row.receiver_id]),
     ),
     currentGroupIds(supabase, viewerId),
+    getGroupNames(
+      supabase,
+      rows.flatMap((row) => (row.group_id ? [row.group_id] : [])),
+    ),
   ]);
   return rows.map((row) => {
     assertMinorAmount(row.amount, {}, "settlement amount");
@@ -86,7 +90,7 @@ async function toItems(supabase: Client, viewerId: string, rows: readonly Settle
     return {
       id: row.id,
       groupId: row.group_id,
-      groupName: row.groups?.name ?? null,
+      groupName: row.group_id ? (groupNames.get(row.group_id) ?? "A group") : null,
       payerId: row.payer_id,
       payerName: nameOf(cards, row.payer_id),
       receiverId: row.receiver_id,
@@ -162,6 +166,25 @@ export async function listPendingSettlements(): Promise<{ toConfirm: SettlementI
     toConfirm: items.filter((item) => item.receiverId === user.id),
     waiting: items.filter((item) => item.payerId === user.id),
   };
+}
+
+/**
+ * Contexts (`contextKey`) where a payment between the viewer and `friendId` is
+ * still waiting for confirmation; "settle up everything" leaves them out (SPEC §11).
+ */
+export async function pendingContextKeysWith(friendId: string): Promise<Set<string>> {
+  const user = await requireUser();
+  uuidSchema.parse(friendId);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("settlements")
+    .select("group_id, currency")
+    .eq("status", "pending")
+    .or(
+      `and(payer_id.eq.${user.id},receiver_id.eq.${friendId}),and(payer_id.eq.${friendId},receiver_id.eq.${user.id})`,
+    );
+  if (error) throw new Error("Could not load settlements.");
+  return new Set(data.map((row) => contextKey(row.group_id, row.currency)));
 }
 
 export interface SettlementDetail extends SettlementItem {

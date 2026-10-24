@@ -9,7 +9,7 @@ import { settlementSentence } from "@/components/settlements/settlement-list";
 import { SettlementStatusBadge } from "@/components/settlements/settlement-status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROUTES } from "@/lib/auth/routes";
-import { formatExpenseDate } from "@/lib/expenses/dates";
+import { formatExpenseDate, formatTimestamp } from "@/lib/expenses/dates";
 import { settlementMethodLabel } from "@/lib/settlements/options";
 import { uuidSchema } from "@/lib/validation/groups";
 import { requireOnboardedProfile } from "@/server/auth";
@@ -17,7 +17,6 @@ import { getSettlement, type SettlementDetail } from "@/server/settlements";
 
 export const metadata: Metadata = { title: "Settlement" };
 
-const timeFormat = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" });
 
 function statusExplanation(settlement: SettlementDetail, viewerId: string): string {
   switch (settlement.status) {
@@ -29,8 +28,10 @@ function statusExplanation(settlement: SettlementDetail, viewerId: string): stri
       return "Counted in balances.";
     case "rejected":
       return "The receiver said this payment didn't arrive. Balances were not changed.";
+    case "withdrawn":
+      return "Withdrawn before it was confirmed. It never changed balances.";
     case "cancelled":
-      return "Cancelled. Any effect it had on balances was reversed.";
+      return "Cancelled after it was completed. Its effect on balances was reversed.";
   }
 }
 
@@ -98,7 +99,7 @@ export default async function SettlementPage({ params, searchParams }: PageProps
             <li key={event.id} className="grid gap-0.5 text-sm">
               <span>{event.title}</span>
               <span className="text-xs text-muted-foreground">
-                {timeFormat.format(new Date(event.at))}
+                {formatTimestamp(event.at, profile.timezone)}
                 {event.effect ? ` · ${event.effect}` : ""}
               </span>
             </li>

@@ -237,6 +237,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"friend_email_requests": {
+                  Row: {
+                    "created_at": string,"email": string,"id": string,"requester_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"email": string,"id"?: string,"requester_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"email"?: string,"id"?: string,"requester_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "friend_email_requests_requester_id_fkey"
+      columns: ["requester_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"friendships": {
                   Row: {
                     "accepted_at": string | null,"created_at": string,"id": string,"requested_by": string,"status": string,"updated_at": string,"user_high": string,"user_low": string
@@ -297,14 +317,14 @@ isOneToOne: false
                   ]
                 },"group_members": {
                   Row: {
-                    "created_at": string,"group_id": string,"id": string,"joined_at": string,"left_at": string | null,"removed_by": string | null,"role": string,"updated_at": string,"user_id": string
+                    "created_at": string,"group_id": string,"id": string,"joined_at": string,"left_at": string | null,"left_group_name": string | null,"removed_by": string | null,"role": string,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"group_id": string,"id"?: string,"joined_at"?: string,"left_at"?: string | null,"removed_by"?: string | null,"role"?: string,"updated_at"?: string,"user_id": string
+                    "created_at"?: string,"group_id": string,"id"?: string,"joined_at"?: string,"left_at"?: string | null,"left_group_name"?: string | null,"removed_by"?: string | null,"role"?: string,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"group_id"?: string,"id"?: string,"joined_at"?: string,"left_at"?: string | null,"removed_by"?: string | null,"role"?: string,"updated_at"?: string,"user_id"?: string
+                    "created_at"?: string,"group_id"?: string,"id"?: string,"joined_at"?: string,"left_at"?: string | null,"left_group_name"?: string | null,"removed_by"?: string | null,"role"?: string,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -603,6 +623,11 @@ isOneToOne: false
 "delete_friend_request":
 { Args: { "p_friendship_id": string }; Returns: undefined
                            },
+"direct_expenses_with":
+{ Args: { "p_friend_id": string,"p_limit"?: number,"p_offset"?: number }; Returns: {
+              "amount": number,"category": string,"currency": string,"description": string,"expense_date": string,"id": string,"status": string,"total_count": number,"version": number
+            }[]
+                           },
 "friend_balances":
 { Args: Record<PropertyKey, never>; Returns: {
               "amount": number,"currency": string,"friend_id": string
@@ -616,6 +641,16 @@ isOneToOne: false
 "group_balances":
 { Args: { "p_group_id": string }; Returns: {
               "amount": number,"currency": string,"user_id": string
+            }[]
+                           },
+"group_invitation_list":
+{ Args: { "p_group_id": string }; Returns: {
+              "created_at": string,"created_by": string,"expires_at": string,"id": string,"invited_email": string,"max_uses": number,"revoked_at": string,"use_count": number
+            }[]
+                           },
+"group_names":
+{ Args: { "p_group_ids": (string)[] }; Returns: {
+              "id": string,"name": string
             }[]
                            },
 "group_pairwise_balances":
@@ -672,7 +707,7 @@ isOneToOne: false
                            },
 "send_friend_request":
 { Args: { "p_email": string }; Returns: {
-              "friend_id": string,"friendship_id": string,"status": string
+              "friend_id": string,"request_id": string,"status": string
             }[]
                            },
 "set_member_role":
@@ -686,6 +721,9 @@ isOneToOne: false
                            },
 "update_group":
 { Args: { "p_default_currency": string,"p_description": string,"p_group_id": string,"p_group_type": string,"p_name": string,"p_simplify_debts": boolean }; Returns: undefined
+                           },
+"withdraw_friend_request":
+{ Args: { "p_request_id": string }; Returns: undefined
                            }
           }
           Enums: {

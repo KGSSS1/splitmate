@@ -147,7 +147,7 @@ export default async function DashboardPage() {
           {activity.items.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nothing yet.</p>
           ) : (
-            <ActivityList items={activity.items} label="Recent activity" />
+            <ActivityList items={activity.items} label="Recent activity" timeZone={profile.timezone} />
           )}
         </Section>
       </div>

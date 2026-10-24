@@ -4,15 +4,17 @@ import { cn } from "@/lib/utils";
 const STYLES: Record<SettlementStatus, string> = {
   pending: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
   completed: "bg-primary/10 text-primary",
-  cancelled: "bg-muted text-muted-foreground",
   rejected: "bg-destructive/10 text-destructive",
+  withdrawn: "bg-muted text-muted-foreground",
+  cancelled: "bg-muted text-muted-foreground",
 };
 
 const LABELS: Record<SettlementStatus, string> = {
   pending: "Pending",
   completed: "Completed",
-  cancelled: "Cancelled",
   rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  cancelled: "Cancelled",
 };
 
 /** The status as a word (never colour alone, SPEC §9). */

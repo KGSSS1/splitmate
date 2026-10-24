@@ -9,7 +9,7 @@ import { ActionButton } from "@/components/shared/action-button";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROUTES } from "@/lib/auth/routes";
-import { formatExpenseDate } from "@/lib/expenses/dates";
+import { formatExpenseDate, formatTimestamp } from "@/lib/expenses/dates";
 import { ADJUSTMENT_LABELS, type AdjustmentKind, categoryLabel, isSplitMethod, SPLIT_METHOD_LABELS } from "@/lib/expenses/options";
 import { formatBasisPoints } from "@/lib/expenses/percent";
 import { formatMoney } from "@/lib/money/format";
@@ -25,6 +25,7 @@ export const metadata: Metadata = { title: "Expense" };
 const SAVED_MESSAGES: Record<string, string> = {
   created: "Expense saved. Balances are updated.",
   updated: "Changes saved. The previous version is in the history below.",
+  unchanged: "Nothing changed, so nothing was saved.",
 };
 
 export default async function ExpensePage({ params, searchParams }: PageProps<"/expenses/[expenseId]">) {
@@ -36,11 +37,6 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
   const name = (id: string) => (id === profile.id ? "You" : nameOf(expense.people, id));
   const format = (amount: number) => formatMoney(amount, expense.currency);
   const cancelled = expense.status === "cancelled";
-  const when = new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: profile.timezone,
-  });
   const back = expense.groupId
     ? { href: `${ROUTES.groups}/${expense.groupId}`, label: expense.groupName ?? "Group" }
     : { href: `${ROUTES.friends}/${expense.friendId}`, label: expense.friendId ? nameOf(expense.people, expense.friendId) : "Friend" };
@@ -165,7 +161,7 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
               <p>
                 <span className="font-medium">{entry.actorName}</span>{" "}
                 {entry.action === "created" ? "added this expense" : entry.action === "cancelled" ? "cancelled it" : "edited it"}
-                <span className="text-muted-foreground"> · {when.format(new Date(entry.at))}</span>
+                <span className="text-muted-foreground"> · {formatTimestamp(entry.at, profile.timezone)}</span>
               </p>
               {entry.changes.length > 0 ? (
                 <dl className="grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-4">
@@ -198,7 +194,7 @@ export default async function ExpensePage({ params, searchParams }: PageProps<"/
               <li key={comment.id} className="grid gap-1 rounded-lg border p-3 text-sm">
                 <p className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-medium">{comment.authorId === profile.id ? "You" : comment.authorName}</span>
-                  <span className="text-xs text-muted-foreground">{when.format(new Date(comment.createdAt))}</span>
+                  <span className="text-xs text-muted-foreground">{formatTimestamp(comment.createdAt, profile.timezone)}</span>
                 </p>
                 <p className="whitespace-pre-line">{comment.body}</p>
                 {comment.authorId === profile.id && expense.canComment ? (

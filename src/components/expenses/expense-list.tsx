@@ -8,12 +8,16 @@ import { formatMoney } from "@/lib/money/format";
 import { cn } from "@/lib/utils";
 import type { ExpenseListItem } from "@/server/expenses";
 
-/** What the expense means for the viewer, in words (never colour alone, SPEC §9). */
-function yourPart(item: ExpenseListItem): { text: string; tone: "positive" | "negative" | "neutral" } {
-  if (item.myNet === null) return { text: "Not involved", tone: "neutral" };
-  if (item.myNet > 0) return { text: `You lent ${formatMoney(item.myNet, item.currency)}`, tone: "positive" };
-  if (item.myNet < 0) return { text: `You owe ${formatMoney(-item.myNet, item.currency)}`, tone: "negative" };
-  return { text: "Nothing owed", tone: "neutral" };
+/**
+ * What the expense did for the viewer when it was added, in words. It is worded
+ * and coloured unlike a balance ("you owe", red/green): it may be settled
+ * already, and current balances live on the balance pages (review M5).
+ */
+function yourPart(item: ExpenseListItem): string {
+  if (item.myNet === null) return "Not involved";
+  if (item.myNet > 0) return `You lent ${formatMoney(item.myNet, item.currency)}`;
+  if (item.myNet < 0) return `You borrowed ${formatMoney(-item.myNet, item.currency)}`;
+  return "Your share was what you paid";
 }
 
 export function ExpenseList({ items, label }: { items: readonly ExpenseListItem[]; label: string }) {
@@ -40,16 +44,7 @@ export function ExpenseList({ items, label }: { items: readonly ExpenseListItem[
                 </span>
               </span>
               {cancelled ? null : (
-                <span
-                  className={cn(
-                    "shrink-0 text-right text-sm tabular-nums",
-                    part.tone === "positive" && "text-primary",
-                    part.tone === "negative" && "text-destructive",
-                    part.tone === "neutral" && "text-muted-foreground",
-                  )}
-                >
-                  {part.text}
-                </span>
+                <span className="shrink-0 text-right text-sm text-muted-foreground tabular-nums">{part}</span>
               )}
               <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             </Link>

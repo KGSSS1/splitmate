@@ -15,7 +15,7 @@ import {
 } from "@/lib/validation/auth";
 import { type ActionResult, invalidInput } from "@/server/action-result";
 import { rememberNextPath } from "@/server/after-auth";
-import { requireUser } from "@/server/auth";
+import { requireLiveSession, requireUser } from "@/server/auth";
 
 /** Where email links (confirmation, password reset) land: the token-hash route. */
 function emailLinkTarget(): string {
@@ -99,6 +99,7 @@ export async function updatePassword(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return invalidInput(parsed.error);
 
   await requireUser();
+  await requireLiveSession();
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { ok: false, error: authErrorMessage(error.code) };

@@ -12,7 +12,21 @@ if (!process.argv.includes("typegen")) {
   validateEnv(process.env);
 }
 
+// Review M6 L14: no framing by other sites (clickjacking on Confirm / Join), no MIME
+// sniffing, and referrers limited to the origin across sites. A full content policy
+// (scripts, styles) needs nonces and is a separate piece of work.
+const SECURITY_HEADERS = [
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+];
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
+  },
   cacheComponents: true,
   partialPrefetching: true,
   // The default bottom-left dev badge covers the sidebar's Log out button.

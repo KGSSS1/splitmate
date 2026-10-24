@@ -7,6 +7,8 @@ import { connection } from "next/server";
 import { getClientEnv } from "@/lib/env";
 import type { Database } from "@/types/database.types";
 
+import { SESSION_COOKIE_OPTIONS } from "./cookie-options";
+
 /**
  * Supabase client for Server Components, Server Actions and Route Handlers,
  * acting as the signed-in user (publishable key + session cookies, so RLS
@@ -20,6 +22,7 @@ export async function createClient() {
   const env = getClientEnv();
 
   return createServerClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
+    cookieOptions: SESSION_COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return cookieStore.getAll();

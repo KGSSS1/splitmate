@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Activity" };
 
 /** Every expense and settlement change the viewer can see, newest first. */
 export default async function ActivityPage({ searchParams }: PageProps<"/activity">) {
-  const [query] = await Promise.all([searchParams, requireOnboardedProfile()]);
+  const [query, profile] = await Promise.all([searchParams, requireOnboardedProfile()]);
   const page = settlementPageSchema.parse(query.page);
   const activity = await listActivity({ page });
   if (page > activity.pageCount) notFound();
@@ -32,7 +32,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
           <p>When you or your friends add expenses or record repayments, they show up here.</p>
         </EmptyState>
       ) : (
-        <ActivityList items={activity.items} label="Activity" />
+        <ActivityList items={activity.items} label="Activity" timeZone={profile.timezone} />
       )}
       <Pager base={ROUTES.activity} page={page} pageCount={activity.pageCount} label="Activity pages" />
     </div>

@@ -85,17 +85,28 @@ export function friendContextBalances({
   );
 }
 
+/** One key per context (a group, or direct) and currency. */
+export function contextKey(groupId: string | null, currency: string): string {
+  return `${groupId ?? "direct"}:${currency}`;
+}
+
 /**
  * What "settle up everything" with `friendId` covers: direct balances and
  * groups the two of them are both still in (`sharedGroupIds`). A group either
- * has left is settled inside that group, not from here.
+ * has left is settled inside that group, not from here. A debt with a payment
+ * between the two still waiting for confirmation (`pendingKeys`, see
+ * `contextKey`) is left out until that one is answered (SPEC §11).
  */
 export function settleableWith<T extends ContextBalance>(
   rows: readonly T[],
   friendId: UserId,
   sharedGroupIds: ReadonlySet<string>,
+  pendingKeys: ReadonlySet<string> = new Set(),
 ): T[] {
   return rows.filter(
-    (row) => row.counterpartyId === friendId && (row.groupId === null || sharedGroupIds.has(row.groupId)),
+    (row) =>
+      row.counterpartyId === friendId &&
+      (row.groupId === null || sharedGroupIds.has(row.groupId)) &&
+      !pendingKeys.has(contextKey(row.groupId, row.currency)),
   );
 }

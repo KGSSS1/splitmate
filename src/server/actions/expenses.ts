@@ -72,14 +72,15 @@ export async function updateExpense(input: unknown): Promise<ActionResult> {
 
   await requireOnboardedProfile();
   const supabase = await createClient();
-  const { error } = await supabase.rpc("update_expense", {
+  const { data: version, error } = await supabase.rpc("update_expense", {
     ...rpcArguments(values),
     p_expense_id: expenseId,
     p_expected_version: expectedVersion,
   });
   if (error) return rpcFailure(error);
 
-  redirect(`${EXPENSES}/${expenseId}?saved=updated`);
+  // The database keeps the version when nothing changed (SPEC §10).
+  redirect(`${EXPENSES}/${expenseId}?saved=${version === expectedVersion ? "unchanged" : "updated"}`);
 }
 
 /** Reversing ledger entries only; the expense and its history stay. */

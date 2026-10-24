@@ -131,7 +131,36 @@ _Reviewer E rated this High in its first pass and Medium in its second, because 
 
 ---
 
-## Medium (open, awaiting your decision)
+## Follow-up batches (decided 2026-10-24)
+
+The product owner decided which Medium and Low findings to fix and grouped them into three batches. Each fix was reproduced by a failing test first. The five suggested spec changes are applied to `docs/SPEC.md`. In addition:
+- withdrawn settlements get their own status;
+- friend requests get the same neutral reply whatever the address;
+- each currency gets a maximum expense amount.
+
+### Batch 1: correctness, trust and security
+
+| ID | Fix | Tests |
+| --- | --- | --- |
+| Withdrawn (spec) | New status `withdrawn` for a pending settlement called off by its payer, or when either person leaves the group. `cancelled` now only means a completed settlement that was reversed. | `140_review_batch1` #1–5; lifecycle and activity unit tests |
+| M1 | `lock_expense_for_change` takes a share lock on the memberships of the actor and of everyone in the current version, so a leave waits for an edit or cancel in progress, then sees the new balance. | `tests/integration/review-races.test.ts` (two real concurrent sessions) |
+| M2 | Maximum expense amount per currency (about US$100,000, e.g. ₹1,00,00,000) in `src/lib/money/currencies.ts`, mirrored in SQL. A ledger trigger keeps each person's sum of pairwise balances per currency within 2^53 − 1. | `140` #10–14; resolve and currency-sync unit tests |
+| M3 | `private.check_split_details`: each share must match its percentage, weight or equal split within one unit; rounding flags must be truthful; itemized shares are capped by assigned items plus charges. It checks results without re-splitting. | `140` #15–21; the differential test passes seeds 1–5 |
+| M4 | The snapshot includes notes, tags, percentages and weights, and itemized lines; the history view shows them. Saving without changes creates no version ("Nothing changed, so nothing was saved."). | `140` #22–26; history unit tests |
+| M5 | Expense rows and activity say "You borrowed / You lent ₹X" in a neutral colour instead of "You owe". | `expense-list.test.tsx`, activity unit tests |
+| M6 | `direct_expenses_with(friend, limit, offset)` lists exactly the expenses with that friend, paged on the friend page. | `tests/integration/direct-expenses.test.ts` (reproduced with the old algorithm first) |
+| M9 | `formatTimestamp(iso, timeZone)` renders every timestamp in the viewer's profile time zone. | `tests/unit/expenses/dates.test.ts` |
+| L2 | "Settle up everything" refuses (SM409) and the friend page leaves out a debt that has a pending payment between the two. | `140` #6–9; friend-view unit tests |
+| L7 | A pending request shows the sender's name to the recipient only. | `140` |
+| L8 | The reply is "Request sent. If someone uses SplitMate with that email, they'll see it." for both cases. The sent list shows the typed addresses. A request to an address without an account applies when it signs up and is confirmed. | `140`; `110` updated; outcome unit tests |
+| L9 | Only current members read `groups`. Former members get the name as it was when they left through `group_names()`. | `140`; `020` updated |
+| L10 | No direct UPDATE on `groups`; settings go through `update_group`. | `140`; `020` updated |
+| L11 | Invitee addresses are returned by `group_invitation_list()` in full to the creator and admins, masked otherwise. They are masked in audit events, including a one-time fix of past rows. | `140` |
+| L12 | `requireLiveSession()` (`getUser()`) guards password change, settlement confirm/reject/cancel, leave, remove and role changes. | `tests/integration/session-revocation.test.ts`, `tests/unit/server/live-session.test.ts` |
+| L13 | Session cookies are HttpOnly, SameSite=Lax, and Secure in production builds. | E2E "the session cookie is HttpOnly" |
+| L14 | `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`; no `X-Powered-By`. | E2E "pages send security headers" |
+
+## Medium (as reported; see the batches above for what was decided and fixed)
 
 | ID | Finding | Where | Reproduce | Recommendation |
 | --- | --- | --- | --- | --- |
@@ -153,7 +182,7 @@ _Reviewer E rated this High in its first pass and Medium in its second, because 
 | M16 | **Pairwise netting has no fixture with debts both ways** [E-N3]. | `120_balances_settle_up.test.sql` | mutation S5 | **Fix.** Add a Bob-pays expense with Alice in Flat and assert the netted row. |
 | M17 | **Flaky component tests** [E-N6, F15]. A second Save/retry click can land on a still-disabled button: `expense-form.test.tsx:169-171` failed 3 of 8 runs, `settle-up-form.test.tsx` failed once. Root cause: the action result renders while `pending` is still true. | `use-action-submit.ts`, the two tests | repeated `npm test` runs | **Fix.** Wait for the button to be enabled before retrying; set the result after the transition. |
 
-## Low (open, awaiting your decision)
+## Low (as reported; see the batches above)
 
 | ID | Finding | Where | Recommendation |
 | --- | --- | --- | --- |

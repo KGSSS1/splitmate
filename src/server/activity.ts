@@ -8,7 +8,7 @@ import {
 } from "@/lib/activity/describe";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/server/auth";
-import { getPersonCards, nameOf } from "@/server/people";
+import { getGroupNames, getPersonCards, nameOf } from "@/server/people";
 
 export const ACTIVITY_PAGE_SIZE = 25;
 
@@ -37,14 +37,10 @@ export async function listActivity({ page = 1, limit = ACTIVITY_PAGE_SIZE }: { p
   const rows = data as AuditEventRow[];
 
   const groupIds = [...new Set(rows.flatMap((row) => (row.group_id ? [row.group_id] : [])))];
-  const [cards, groups] = await Promise.all([
+  const [cards, groupNames] = await Promise.all([
     getPersonCards(supabase, rows.flatMap(activityPeople)),
-    groupIds.length
-      ? supabase.from("groups").select("id, name").in("id", groupIds)
-      : Promise.resolve({ data: [], error: null }),
+    getGroupNames(supabase, groupIds),
   ]);
-  if (groups.error) throw new Error("Could not load activity.");
-  const groupNames = new Map(groups.data.map((group) => [group.id, group.name]));
 
   const total = data[0]?.total_count ?? 0;
   return {

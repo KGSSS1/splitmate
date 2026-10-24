@@ -8,6 +8,7 @@ import { ActionButton } from "@/components/shared/action-button";
 import { BalanceText } from "@/components/shared/balance-text";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isSettledUp } from "@/lib/accounting/person-balances";
+import { formatTimestamp } from "@/lib/expenses/dates";
 import { uuidSchema } from "@/lib/validation/groups";
 import { leaveGroup, removeMember, setMemberRole } from "@/server/actions/groups";
 import { revokeInvitation } from "@/server/actions/invitations";
@@ -16,7 +17,6 @@ import { getGroup, type GroupMember, type OpenInvitation } from "@/server/groups
 
 export const metadata: Metadata = { title: "Group members" };
 
-const dateFormat = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" });
 
 export default async function GroupMembersPage({ params }: PageProps<"/groups/[groupId]/members">) {
   const [{ groupId }, profile] = await Promise.all([params, requireOnboardedProfile()]);
@@ -90,6 +90,7 @@ export default async function GroupMembersPage({ params }: PageProps<"/groups/[g
                   key={invitation.id}
                   invitation={invitation}
                   canRevoke={isAdmin || invitation.createdBy === profile.id}
+                  timeZone={profile.timezone}
                 />
               ))}
             </ul>
@@ -181,7 +182,15 @@ function MemberRow({
   );
 }
 
-function InvitationRow({ invitation, canRevoke }: { invitation: OpenInvitation; canRevoke: boolean }) {
+function InvitationRow({
+  invitation,
+  canRevoke,
+  timeZone,
+}: {
+  invitation: OpenInvitation;
+  canRevoke: boolean;
+  timeZone: string;
+}) {
   const label = invitation.invitedEmail ? `Email invitation for ${invitation.invitedEmail}` : "Invite link";
   return (
     <li className="flex flex-wrap items-start justify-between gap-3">
@@ -189,7 +198,7 @@ function InvitationRow({ invitation, canRevoke }: { invitation: OpenInvitation; 
         <p className="font-medium break-all">{label}</p>
         <p className="text-muted-foreground">
           {invitation.useCount} of {invitation.maxUses} used · expires{" "}
-          {dateFormat.format(new Date(invitation.expiresAt))} · by {invitation.createdByName}
+          {formatTimestamp(invitation.expiresAt, timeZone, { dateOnly: true })} · by {invitation.createdByName}
         </p>
       </div>
       {canRevoke ? (

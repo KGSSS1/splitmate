@@ -7,4 +7,6 @@ export const addFriendSchema = z.object({ email: emailSchema });
 
 export const friendshipIdSchema = z.object({ friendshipId: uuidSchema });
 
+export const sentRequestIdSchema = z.object({ requestId: uuidSchema });
+
 export type AddFriendInput = z.input<typeof addFriendSchema>;

@@ -6,7 +6,7 @@ import { describeChanges, type FieldChange, parseSnapshot, snapshotUsers } from 
 import { EXPENSES_PAGE_SIZE } from "@/lib/expenses/options";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/server/auth";
-import { getPersonCards, nameOf, type PersonCard } from "@/server/people";
+import { getGroupNames, getPersonCards, nameOf, type PersonCard } from "@/server/people";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -133,7 +133,7 @@ export async function getExpense(expenseId: string): Promise<ExpenseDetail | nul
   if (!expense) return null;
   const version = expense.version;
 
-  const [payers, participants, items, history, comments, group] = await Promise.all([
+  const [payers, participants, items, history, comments, groupNames] = await Promise.all([
     supabase.from("expense_payers").select("user_id, amount").eq("expense_id", expenseId).eq("version", version),
     supabase
       .from("expense_participants")
@@ -161,11 +161,10 @@ export async function getExpense(expenseId: string): Promise<ExpenseDetail | nul
       .is("deleted_at", null)
       .order("created_at")
       .limit(200),
-    expense.group_id
-      ? supabase.from("groups").select("name").eq("id", expense.group_id).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
+    // Former members don't read the group itself; they get its name as it was when they left (L9).
+    getGroupNames(supabase, expense.group_id ? [expense.group_id] : []),
   ]);
-  if (payers.error || participants.error || items.error || history.error || comments.error || group.error) {
+  if (payers.error || participants.error || items.error || history.error || comments.error) {
     throw new Error("Could not load this expense.");
   }
 
@@ -189,7 +188,7 @@ export async function getExpense(expenseId: string): Promise<ExpenseDetail | nul
   return {
     id: expense.id,
     groupId: expense.group_id,
-    groupName: group.data?.name ?? null,
+    groupName: expense.group_id ? (groupNames.get(expense.group_id) ?? "A group") : null,
     status: expense.status === "cancelled" ? "cancelled" : "active",
     version,
     createdAt: expense.created_at,
@@ -381,43 +380,34 @@ export async function listGroupExpenses(groupId: string, page: number): Promise<
   };
 }
 
-/** Direct (non-group) expenses between the caller and one friend, newest first (the latest 50). */
-export async function listDirectExpenses(friendId: string): Promise<ExpenseListItem[]> {
-  const user = await requireUser();
-  const supabase = await createClient();
-  // RLS limits direct expenses to the ones the caller took part in; each has exactly two people.
-  const { data, error } = await supabase
-    .from("expenses")
-    .select(LIST_COLUMNS)
-    .is("group_id", null)
-    .order("expense_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    // Kept small: the IDs go into the query string of the next two requests.
-    .limit(100);
+/**
+ * Direct (non-group) expenses between the viewer and one friend, newest first,
+ * `EXPENSES_PAGE_SIZE` per page. Takes the client so integration tests can run
+ * it as any user (review M6).
+ */
+export async function loadDirectExpenses(
+  supabase: Client,
+  viewerId: string,
+  friendId: string,
+  page: number,
+): Promise<ExpensePage> {
+  const { data, error } = await supabase.rpc("direct_expenses_with", {
+    p_friend_id: friendId,
+    p_limit: EXPENSES_PAGE_SIZE,
+    p_offset: (page - 1) * EXPENSES_PAGE_SIZE,
+  });
   if (error) throw new Error("Could not load expenses.");
-  if (data.length === 0) return [];
+  const total = data[0]?.total_count ?? 0;
+  return {
+    items: await toListItems(supabase, viewerId, data),
+    page,
+    pageCount: Math.max(1, Math.ceil(total / EXPENSES_PAGE_SIZE)),
+    total,
+  };
+}
 
-  const { data: parties, error: partiesError } = await supabase
-    .from("expense_participants")
-    .select("expense_id")
-    .eq("user_id", friendId)
-    .in(
-      "expense_id",
-      data.map((row) => row.id),
-    );
-  const { data: payers, error: payersError } = await supabase
-    .from("expense_payers")
-    .select("expense_id")
-    .eq("user_id", friendId)
-    .in(
-      "expense_id",
-      data.map((row) => row.id),
-    );
-  if (partiesError || payersError) throw new Error("Could not load expenses.");
-  const withFriend = new Set([...parties, ...payers].map((row) => row.expense_id));
-  return toListItems(
-    supabase,
-    user.id,
-    data.filter((row) => withFriend.has(row.id)).slice(0, 50),
-  );
+/** Direct expenses with one friend, one page at a time. */
+export async function listDirectExpenses(friendId: string, page = 1): Promise<ExpensePage> {
+  const user = await requireUser();
+  return loadDirectExpenses(await createClient(), user.id, friendId, page);
 }

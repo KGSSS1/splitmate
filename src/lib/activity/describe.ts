@@ -26,7 +26,7 @@ export interface ActivityItem {
   at: string;
   /** "Asha added “Dinner”", "You confirmed Bina's payment of ₹100.00 to you". */
   title: string;
-  /** What it means for the viewer, in words ("You owe ₹300.00"); null when nothing. */
+  /** What it meant for the viewer, in words ("You borrowed ₹300.00"); null when nothing. */
   effect: string | null;
   tone: ActivityTone;
 }
@@ -39,6 +39,7 @@ export const ACTIVITY_ACTIONS = [
   "settlement.created",
   "settlement.confirmed",
   "settlement.rejected",
+  "settlement.withdrawn",
   "settlement.cancelled",
 ] as const;
 
@@ -79,9 +80,10 @@ function describeExpense(row: AuditEventRow, viewerId: string, nameOf: NameOf): 
   const involved = [...snapshot.payers, ...snapshot.participants].some((row) => row.userId === viewerId);
   const net = addMinor(mine(snapshot.payers), -mine(snapshot.participants));
   if (!involved) return base(row, "expense", title, null, "neutral");
-  if (net > 0) return base(row, "expense", title, `You lent ${formatMoney(net, snapshot.currency)}`, "positive");
-  if (net < 0) return base(row, "expense", title, `You owe ${formatMoney(-net, snapshot.currency)}`, "negative");
-  return base(row, "expense", title, "Nothing owed", "neutral");
+  // Worded and coloured unlike a current balance: it may be settled already (review M5).
+  if (net > 0) return base(row, "expense", title, `You lent ${formatMoney(net, snapshot.currency)}`, "neutral");
+  if (net < 0) return base(row, "expense", title, `You borrowed ${formatMoney(-net, snapshot.currency)}`, "neutral");
+  return base(row, "expense", title, "Your share was what you paid", "neutral");
 }
 
 function describeSettlement(row: AuditEventRow, viewerId: string, nameOf: NameOf): ActivityItem | null {
@@ -119,6 +121,8 @@ function describeSettlement(row: AuditEventRow, viewerId: string, nameOf: NameOf
       return base(row, "settlement", `${actor} confirmed ${payment}`, "Balances updated", "neutral");
     case "settlement.rejected":
       return base(row, "settlement", `${actor} rejected ${payment}`, "Balances unchanged", "neutral");
+    case "settlement.withdrawn":
+      return base(row, "settlement", `${actor} withdrew ${payment}`, "Balances unchanged", "neutral");
     case "settlement.cancelled": {
       const wasCompleted = isRecord(row.before) && row.before.status === "completed";
       const from = whom(payerId, viewerId, nameOf);

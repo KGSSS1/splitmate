@@ -85,14 +85,15 @@ select is((select count(*)::int from public.audit_events where action = 'member.
 
 -- ---------------------------------------------------------------- friend requests
 select tests.authenticate_as('carol');
+-- Review M6 L8: the reply is the same whether or not the address has an account.
 select results_eq($$ select status, friend_id from public.send_friend_request('  DAVE@tests.local ') $$,
-                  format($$ values ('requested'::text, %L::uuid) $$, tests.uid('dave')),
-                  'a request to an exact email (any case) is created');
+                  $$ values ('sent'::text, null::uuid) $$,
+                  'a request to an exact email (any case) gets the neutral reply');
 select results_eq($$ select status from public.send_friend_request('dave@tests.local') $$,
-                  $$ values ('already_requested'::text) $$, 'asking again is a no-op');
+                  $$ values ('sent'::text) $$, 'asking again gets the same reply');
 select is((select status from public.friendships where requested_by = tests.uid('carol')), 'pending', 'the request is pending');
-select results_eq($$ select status, friendship_id from public.send_friend_request('nobody@tests.local') $$,
-                  $$ values ('not_found'::text, null::uuid) $$, 'an unknown email is reported as not found');
+select results_eq($$ select status, friend_id from public.send_friend_request('nobody@tests.local') $$,
+                  $$ values ('sent'::text, null::uuid) $$, 'an unknown email gets the same reply as a known one');
 select results_eq($$ select status from public.send_friend_request('carol@tests.local') $$,
                   $$ values ('self'::text) $$, 'your own email is reported');
 select throws_ok($$ select * from public.send_friend_request('not-an-email') $$, 'SM422', null, 'an invalid email is rejected');
@@ -131,21 +132,32 @@ select ok(exists (select 1 from public.audit_events where action = 'friend.accep
 -- Crossing requests: asking someone who already asked you accepts theirs.
 select tests.authenticate_as('frank');
 select results_eq($$ select status from public.send_friend_request('erin@tests.local') $$,
-                  $$ values ('requested'::text) $$, 'frank asks erin');
+                  $$ values ('sent'::text) $$, 'frank asks erin');
 select tests.authenticate_as('erin');
 select results_eq($$ select status from public.send_friend_request('frank@tests.local') $$,
                   $$ values ('accepted'::text) $$, 'erin asking frank back accepts his request');
 
 -- Decline and withdraw.
 select tests.authenticate_as('bob');
-create temp table bob_frank as select * from public.send_friend_request('frank@tests.local');
+select public.send_friend_request('frank@tests.local');
+reset role;
+create temp table bob_frank as
+  select f.id as friendship_id from public.friendships f
+   where f.requested_by = tests.uid('bob') and tests.uid('frank') in (f.user_low, f.user_high);
+grant select on bob_frank to authenticated;
 select tests.authenticate_as('frank');
 select lives_ok(format($$ select public.delete_friend_request(%L) $$, (select friendship_id from bob_frank)),
                 'the recipient declines');
 select tests.authenticate_as('bob');
 select is((select count(*)::int from public.friendships where tests.uid('frank') in (user_low, user_high) and tests.uid('bob') in (user_low, user_high)),
           0, 'a declined request is gone');
-create temp table bob_frank2 as select * from public.send_friend_request('frank@tests.local');
+select public.send_friend_request('frank@tests.local');
+reset role;
+create temp table bob_frank2 as
+  select f.id as friendship_id from public.friendships f
+   where f.requested_by = tests.uid('bob') and tests.uid('frank') in (f.user_low, f.user_high);
+grant select on bob_frank2 to authenticated;
+select tests.authenticate_as('bob');
 select lives_ok(format($$ select public.delete_friend_request(%L) $$, (select friendship_id from bob_frank2)),
                 'the requester withdraws');
 select throws_ok(format($$ select public.delete_friend_request(%L) $$, (select friendship_id from bob_frank2)),
@@ -161,7 +173,12 @@ select throws_ok($$ select count(*) from private.rate_limit_events $$, '42501', 
 
 -- Joining a group turns a pending request between members into a friendship.
 select tests.authenticate_as('dave');
-create temp table dave_erin as select * from public.send_friend_request('erin@tests.local');
+select public.send_friend_request('erin@tests.local');
+reset role;
+create temp table dave_erin as
+  select f.id as friendship_id from public.friendships f
+   where f.requested_by = tests.uid('dave') and tests.uid('erin') in (f.user_low, f.user_high);
+grant select on dave_erin to authenticated;
 select tests.authenticate_as('erin');
 create temp table inv_other as select * from public.create_invitation(tests.group_id('Other'));
 select tests.authenticate_as('dave');

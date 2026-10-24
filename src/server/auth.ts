@@ -39,6 +39,18 @@ export async function requireUser(): Promise<SessionUser> {
   return user;
 }
 
+/**
+ * For sensitive actions (review L12): asks Supabase Auth whether the session is
+ * still alive. `getClaims()` verifies the token locally, so a session ended by
+ * logging out would otherwise keep working until its access token expires.
+ */
+export async function requireLiveSession(): Promise<SessionUser> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) redirect(ROUTES.login);
+  return { id: data.user.id, email: data.user.email ?? null };
+}
+
 /** The signed-in user's own profile (RLS: own row only). */
 export const getProfile = cache(async (): Promise<Profile> => {
   const user = await requireUser();

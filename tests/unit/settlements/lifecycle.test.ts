@@ -44,7 +44,8 @@ describe("settlement lifecycle (SPEC §2, §11)", () => {
 
   it("the payer can withdraw a pending settlement with no balance effect", () => {
     const pending = { ...parties, status: "pending" as const };
-    expect(transitionSettlement(pending, "cancel", "payer")).toEqual({ status: "cancelled", ledgerEffect: "none" });
+    // SPEC §11: a pending settlement called off is withdrawn (it never counted), not cancelled.
+    expect(transitionSettlement(pending, "cancel", "payer")).toEqual({ status: "withdrawn", ledgerEffect: "none" });
     expectCode(() => transitionSettlement(pending, "cancel", "receiver"), "NOT_ALLOWED");
   });
 
@@ -62,8 +63,8 @@ describe("settlement lifecycle (SPEC §2, §11)", () => {
     expectCode(() => transitionSettlement(completed, "confirm", "receiver"), "INVALID_TRANSITION");
   });
 
-  it("rejected and cancelled settlements are final", () => {
-    for (const status of ["rejected", "cancelled"] as const) {
+  it("rejected, withdrawn and cancelled settlements are final", () => {
+    for (const status of ["rejected", "withdrawn", "cancelled"] as const) {
       for (const action of ["confirm", "reject", "cancel"] as const) {
         expectCode(() => transitionSettlement({ ...parties, status }, action, "receiver"), "INVALID_TRANSITION");
       }

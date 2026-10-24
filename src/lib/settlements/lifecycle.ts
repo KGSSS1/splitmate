@@ -42,9 +42,9 @@ export function initialSettlementStatus(parties: SettlementParties, recordedBy: 
 /**
  * pending   --confirm (receiver)-->  completed (apply)
  * pending   --reject  (receiver)-->  rejected
- * pending   --cancel  (payer)----->  cancelled (withdrawn before confirmation)
+ * pending   --cancel  (payer)----->  withdrawn (called off before confirmation)
  * completed --cancel  (either)---->  cancelled (reverse)
- * rejected and cancelled are final. Completing twice is impossible, so a
+ * rejected, withdrawn and cancelled are final. Completing twice is impossible, so a
  * settlement is never counted twice.
  */
 export function transitionSettlement(
@@ -60,7 +60,7 @@ export function transitionSettlement(
     case "pending":
       if (action === "cancel") {
         if (role !== "payer") throw new AccountingError("NOT_ALLOWED", "The receiver rejects instead of cancelling");
-        return { status: "cancelled", ledgerEffect: "none" };
+        return { status: "withdrawn", ledgerEffect: "none" };
       }
       if (role !== "receiver") {
         throw new AccountingError("NOT_ALLOWED", "Only the receiver can confirm or reject a pending settlement");
@@ -72,6 +72,7 @@ export function transitionSettlement(
       if (action !== "cancel") throw invalid();
       return { status: "cancelled", ledgerEffect: "reverse" };
     case "rejected":
+    case "withdrawn":
     case "cancelled":
       throw invalid();
     default:

@@ -24,7 +24,7 @@ export function settlementMethodLabel(value: string): string {
   return isSettlementMethod(value) ? SETTLEMENT_METHOD_LABELS[value] : "Other";
 }
 
-export const SETTLEMENT_STATUSES = ["pending", "completed", "cancelled", "rejected"] as const;
+export const SETTLEMENT_STATUSES = ["pending", "completed", "rejected", "withdrawn", "cancelled"] as const;
 
 export function isSettlementStatus(value: unknown): value is SettlementStatus {
   return typeof value === "string" && (SETTLEMENT_STATUSES as readonly string[]).includes(value);
@@ -33,8 +33,9 @@ export function isSettlementStatus(value: unknown): value is SettlementStatus {
 export const SETTLEMENT_STATUS_LABELS: Record<SettlementStatus, string> = {
   pending: "Waiting for confirmation",
   completed: "Completed",
-  cancelled: "Cancelled",
   rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  cancelled: "Cancelled",
 };
 
 /** "I paid them" or "they paid me": the viewer is always one of the two people. */

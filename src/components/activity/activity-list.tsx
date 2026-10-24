@@ -2,13 +2,21 @@ import { HandCoins, ReceiptText } from "lucide-react";
 import Link from "next/link";
 
 import { ROUTES } from "@/lib/auth/routes";
+import { formatTimestamp } from "@/lib/expenses/dates";
 import { cn } from "@/lib/utils";
 import type { ActivityFeedItem } from "@/server/activity";
 
-const timeFormat = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" });
-
 /** Expense and settlement history, each row linking to what it is about. */
-export function ActivityList({ items, label }: { items: readonly ActivityFeedItem[]; label: string }) {
+export function ActivityList({
+  items,
+  label,
+  timeZone,
+}: {
+  items: readonly ActivityFeedItem[];
+  label: string;
+  /** The viewer's profile time zone (times are never shown in the server's). */
+  timeZone: string;
+}) {
   return (
     <ul className="divide-y rounded-xl border" aria-label={label}>
       {items.map((item) => {
@@ -26,7 +34,7 @@ export function ActivityList({ items, label }: { items: readonly ActivityFeedIte
               <span className="grid min-w-0 flex-1 gap-0.5">
                 <span className="text-sm break-words">{item.title}</span>
                 <span className="text-xs text-muted-foreground">
-                  {timeFormat.format(new Date(item.at))} · {item.groupName ?? "Direct"}
+                  {formatTimestamp(item.at, timeZone)} · {item.groupName ?? "Direct"}
                 </span>
                 {item.effect ? (
                   <span

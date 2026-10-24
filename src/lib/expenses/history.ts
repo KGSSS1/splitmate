@@ -18,6 +18,40 @@ export interface ExpenseSnapshot {
   category: string | null;
   payers: { userId: string; amount: number }[];
   participants: { userId: string; amount: number }[];
+  /**
+   * Recorded since review M4. `undefined` means an older snapshot that didn't
+   * record the field, so no change is reported for it.
+   */
+  notes?: string | null;
+  tags?: string[];
+  items?: SnapshotItem[];
+}
+
+export interface SnapshotItem {
+  kind: string;
+  name: string;
+  amount: number;
+  allocation: string | null;
+  assignees: string[];
+}
+
+function snapshotItems(value: unknown): SnapshotItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((row) =>
+    isRecord(row) && typeof row.name === "string" && typeof row.kind === "string" && Number.isSafeInteger(row.amount)
+      ? [
+          {
+            kind: row.kind,
+            name: row.name,
+            amount: row.amount as number,
+            allocation: typeof row.allocation === "string" ? row.allocation : null,
+            assignees: Array.isArray(row.assignees)
+              ? row.assignees.filter((id): id is string => typeof id === "string")
+              : [],
+          },
+        ]
+      : [],
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -55,6 +89,9 @@ export function parseSnapshot(value: unknown): ExpenseSnapshot | null {
     category: typeof category === "string" ? category : null,
     payers: userAmounts(value.payers),
     participants: userAmounts(value.participants),
+    ...("notes" in value ? { notes: typeof value.notes === "string" ? value.notes : null } : {}),
+    ...(Array.isArray(value.tags) ? { tags: value.tags.filter((tag): tag is string => typeof tag === "string") } : {}),
+    ...(Array.isArray(value.items) ? { items: snapshotItems(value.items) } : {}),
   };
 }
 
@@ -96,11 +133,38 @@ export function describeChanges(
     amounts(before.participants, before.currency, nameOf),
     amounts(after.participants, after.currency, nameOf),
   );
+  // Recorded since review M4: compared only when both versions have them.
+  if (before.notes !== undefined && after.notes !== undefined) {
+    add("Notes", before.notes ?? "None", after.notes ?? "None");
+  }
+  if (before.tags && after.tags) add("Tags", before.tags.join(", ") || "None", after.tags.join(", ") || "None");
+  if (before.items && after.items) {
+    add("Items", items(before.items, before.currency, nameOf), items(after.items, after.currency, nameOf));
+  }
   return changes;
+}
+
+function items(rows: SnapshotItem[], currency: string, nameOf: (id: string) => string): string {
+  return (
+    rows
+      .map((row) => {
+        const who =
+          row.kind === "item"
+            ? row.assignees.map(nameOf).join(", ")
+            : row.allocation === "equal"
+              ? "split equally"
+              : "split by items";
+        return `${row.name} ${formatMoney(row.amount, currency)} (${who})`;
+      })
+      .join("; ") || "None"
+  );
 }
 
 /** Every user ID mentioned in a snapshot. */
 export function snapshotUsers(snapshot: ExpenseSnapshot | null): string[] {
   if (!snapshot) return [];
-  return [...snapshot.payers, ...snapshot.participants].map((row) => row.userId);
+  return [
+    ...[...snapshot.payers, ...snapshot.participants].map((row) => row.userId),
+    ...(snapshot.items ?? []).flatMap((item) => item.assignees),
+  ];
 }

@@ -54,12 +54,13 @@ describe("describeActivity", () => {
       kind: "expense",
       title: "You added “Dinner” (₹900.00)",
       effect: "You lent ₹600.00",
-      tone: "positive",
+      // Neutral: what the expense did then, not a current balance (review M5).
+      tone: "neutral",
     });
     expect(describeActivity(row({}), "b", nameOf)).toMatchObject({
       title: "Asha added “Dinner” (₹900.00)",
-      effect: "You owe ₹300.00",
-      tone: "negative",
+      effect: "You borrowed ₹300.00",
+      tone: "neutral",
     });
   });
 
@@ -122,6 +123,21 @@ describe("describeActivity", () => {
         nameOf,
       ),
     ).toMatchObject({ title: "Bina cancelled the ₹100.00 payment from Bina to you", effect: "Its effect on balances was reversed" });
+  });
+
+  it("a withdrawn payment never changed balances", () => {
+    const withdrawn = row({
+      entity_type: "settlement",
+      action: "settlement.withdrawn",
+      actor_id: "b",
+      before: settlement(),
+      after: settlement({ status: "withdrawn" }),
+    });
+    expect(describeActivity(withdrawn, "a", nameOf)).toMatchObject({
+      title: "Bina withdrew Bina's payment of ₹100.00",
+      effect: "Balances unchanged",
+    });
+    expect(describeActivity(withdrawn, "b", nameOf)?.title).toBe("You withdrew your payment of ₹100.00");
   });
 
   it("skips rows it does not understand", () => {

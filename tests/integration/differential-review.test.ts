@@ -694,6 +694,15 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
                     );
               const ctxPeople = people;
               for (const b of between) {
+                // SPEC §11 (review L2): a debt with a pending payment between the two is left out.
+                const pendingHere = settlements.some(
+                  (s) =>
+                    s.status === "pending" &&
+                    s.groupId === g &&
+                    s.currency === b.currency &&
+                    [s.payerId, s.receiverId].sort().join() === [caller, friend].sort().join(),
+                );
+                if (pendingHere) continue;
                 items.push({ group_id: g, currency: b.currency, amount: b.amount });
                 const payerId = b.amount > 0 ? friend : caller;
                 const receiverId = b.amount > 0 ? caller : friend;
@@ -915,7 +924,7 @@ describe("differential review: database RPCs vs src/lib/accounting", () => {
       if (!confirm.error && !withdraw.error) ledger.push(...reverseEntries(buildSettlementEntries({ ...s, status: "completed" })));
       expect(confirm.error && withdraw.error).toBeFalsy();
       s.status = (row?.status ?? "pending") as SettlementStatus;
-      expect(s.status).toBe(withdraw.error ? "completed" : "cancelled");
+      expect(s.status).toBe(withdraw.error ? "completed" : confirm.error ? "withdrawn" : "cancelled");
     }
 
     await checkEverything();

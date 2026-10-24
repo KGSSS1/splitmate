@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { AccountingError } from "@/lib/accounting/errors";
-import { friendContextBalances, settleableWith } from "@/lib/settlements/friend-view";
+import { contextKey, friendContextBalances, settleableWith } from "@/lib/settlements/friend-view";
 
 const G = "group-simplified";
 const H = "group-raw";
@@ -125,5 +125,26 @@ describe("settleableWith", () => {
       [null, 100],
       [G, 400],
     ]);
+  });
+});
+
+describe("settleableWith and pending payments (review L2)", () => {
+  const rows = friendContextBalances({
+    viewerId: "a",
+    raw: [
+      { counterpartyId: "b", groupId: null, currency: "INR", amount: -100, simplified: false },
+      { counterpartyId: "b", groupId: null, currency: "USD", amount: 50, simplified: false },
+    ],
+    groupNets: [],
+  });
+
+  it("leaves out a debt that already has a payment waiting for confirmation", () => {
+    const pending = new Set([contextKey(null, "INR")]);
+    expect(settleableWith(rows, "b", new Set(), pending).map((row) => row.currency)).toEqual(["USD"]);
+  });
+
+  it("keys contexts by group (or direct) and currency", () => {
+    expect(contextKey(null, "INR")).toBe("direct:INR");
+    expect(contextKey("g1", "USD")).toBe("g1:USD");
   });
 });

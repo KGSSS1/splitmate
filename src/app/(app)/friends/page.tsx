@@ -7,8 +7,9 @@ import { ActionButton } from "@/components/shared/action-button";
 import { BalanceText } from "@/components/shared/balance-text";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { brand } from "@/config/brand";
 import { ROUTES } from "@/lib/auth/routes";
-import { acceptFriendRequest, deleteFriendRequest } from "@/server/actions/friends";
+import { acceptFriendRequest, deleteFriendRequest, withdrawFriendRequest } from "@/server/actions/friends";
 import { requireOnboardedProfile } from "@/server/auth";
 import { type FriendRequest, getFriendsOverview } from "@/server/friends";
 
@@ -43,7 +44,6 @@ export default async function FriendsPage() {
           title="Friend requests"
           description="People who want to split expenses with you."
           requests={incoming}
-          kind="incoming"
         />
       ) : null}
 
@@ -76,12 +76,29 @@ export default async function FriendsPage() {
       </section>
 
       {outgoing.length > 0 ? (
-        <RequestList
-          title="Sent requests"
-          description="Waiting for them to accept."
-          requests={outgoing}
-          kind="outgoing"
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>Sent requests</h2>
+            </CardTitle>
+            <CardDescription>
+              If someone uses {brand.name} with one of these addresses, they can accept. If not, the request waits
+              until they sign up.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="grid gap-4" aria-label="Sent requests">
+              {outgoing.map((request) => (
+                <li key={request.requestId} className="flex flex-wrap items-start justify-between gap-3">
+                  <span className="font-medium break-all">{request.email}</span>
+                  <ActionButton action={withdrawFriendRequest.bind(null, { requestId: request.requestId })}>
+                    Withdraw
+                  </ActionButton>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );
@@ -91,12 +108,10 @@ function RequestList({
   title,
   description,
   requests,
-  kind,
 }: {
   title: string;
   description: string;
   requests: FriendRequest[];
-  kind: "incoming" | "outgoing";
 }) {
   return (
     <Card>
@@ -112,23 +127,15 @@ function RequestList({
             <li key={request.friendshipId} className="flex flex-wrap items-start justify-between gap-3">
               <span className="font-medium">{request.displayName}</span>
               <div className="flex flex-wrap gap-2">
-                {kind === "incoming" ? (
-                  <>
-                    <ActionButton
-                      variant="default"
-                      action={acceptFriendRequest.bind(null, { friendshipId: request.friendshipId })}
-                    >
-                      Accept
-                    </ActionButton>
-                    <ActionButton action={deleteFriendRequest.bind(null, { friendshipId: request.friendshipId })}>
-                      Decline
-                    </ActionButton>
-                  </>
-                ) : (
-                  <ActionButton action={deleteFriendRequest.bind(null, { friendshipId: request.friendshipId })}>
-                    Withdraw
-                  </ActionButton>
-                )}
+                <ActionButton
+                  variant="default"
+                  action={acceptFriendRequest.bind(null, { friendshipId: request.friendshipId })}
+                >
+                  Accept
+                </ActionButton>
+                <ActionButton action={deleteFriendRequest.bind(null, { friendshipId: request.friendshipId })}>
+                  Decline
+                </ActionButton>
               </div>
             </li>
           ))}

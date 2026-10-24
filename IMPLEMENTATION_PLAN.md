@@ -2,6 +2,23 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-24: Review follow-ups, batch 1 (correctness, trust and security)
+
+- **Decisions (product owner):** fix the chosen Medium/Low findings in three batches, each committed before the next; push to staging only after all three. The five suggested spec changes are in `docs/SPEC.md`, plus a `withdrawn` settlement status, a neutral friend-request reply (L8) and a per-currency maximum expense amount (M2). The batch tables are in `docs/reviews/review-M6.md` under "Follow-up batches".
+- **Batch 1 fixed** (each reproduced by a failing test first): withdrawn status, M1, M2, M3, M4, M5, M6, M9, L2, L7, L8, L9, L10, L11, L12, L13, L14.
+- **Migrations:**
+  - `20261023090000_settlement_withdrawn.sql`: `withdrawn` status and backfill; `cancel_settlement`, `end_membership` and `my_activity` updated; `settle_up_with_friend` refuses a context with a pending payment between the pair (L2).
+  - `20261023091000_expense_integrity.sql`: membership share locks on edit/cancel (M1); `currency_max_amount` and the ledger balance-range trigger (M2); `check_split_details` (M3); fuller snapshots and no-op saves (M4).
+  - `20261023092000_reads_and_privacy.sql`: `direct_expenses_with` (M6); `friend_email_requests`, neutral `send_friend_request`, `withdraw_friend_request`, apply-on-signup triggers (L7, L8); `group_names` and `left_group_name` (L9); no direct group UPDATE (L10); `group_invitation_list` and masked audit addresses (L11).
+- **App:** `requireLiveSession()` on sensitive actions (L12); HttpOnly/SameSite/Secure session cookies (L13); security headers (L14); `formatTimestamp` in the profile time zone (M9); "You borrowed / You lent" wording (M5); paged direct expenses on the friend page (M6).
+- **Tests:** pgTAP `140_review_batch1` (46); integration `review-races`, `direct-expenses`, `session-revocation`; unit tests for dates, live session, expense list, currency limits, history, friend view, lifecycle, activity, request outcome; E2E cookie and header checks.
+- **Checks:**
+  - `db reset` from scratch ✓ (18 migrations); generated types updated; `db lint` and advisors ✓.
+  - Lint, typecheck and build ✓.
+  - pgTAP 463 ✓. Integration 25 ✓. Playwright 38/38 ✓ (`--workers=2`).
+  - Unit 441/443: the two failures are the known M17 flakes (expense-form and settle-up-form retry tests). They are batch 2's first item, as decided.
+- **Not pushed:** the three migrations and the branch wait for batches 2 and 3, then approval.
+
 ### 2026-10-22: Friend balances follow simplified plans (review H3, option 1)
 
 - **Decision (product owner):** in groups that simplify debts, friend-level views use the group's simplified plan instead of raw pairwise rows. Direct expenses and non-simplifying groups are unchanged. SPEC §2, §7, §9 and §11 are updated.

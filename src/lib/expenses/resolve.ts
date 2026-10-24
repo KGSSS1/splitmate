@@ -3,7 +3,7 @@ import { splitItemized } from "@/lib/accounting/itemized";
 import { allocatePairwise } from "@/lib/accounting/pairwise";
 import { FULL_PERCENT_BPS, splitEqual, splitExact, splitPercentage, splitShares } from "@/lib/accounting/splits";
 import type { PairwiseDebt, Payer, Share } from "@/lib/accounting/types";
-import { isCurrencyCode } from "@/lib/money/currencies";
+import { isCurrencyCode, maxExpenseMinor } from "@/lib/money/currencies";
 import { formatMoney } from "@/lib/money/format";
 import { type ParseMoneyError, parseMoney } from "@/lib/money/parse";
 
@@ -177,6 +177,16 @@ export function resolveExpense(values: ExpenseFormValues): ResolveResult {
     if (total === null) return fail();
     shares = resolveShares(values, included, total, currency, basisPoints, weights, issues, format);
     if (!shares) return fail(total);
+  }
+
+  // One expense may not exceed the currency's limit (SPEC §7); the database checks it too.
+  const max = maxExpenseMinor(currency);
+  if (total > max) {
+    issues.push({
+      path: values.splitMethod === "itemized" ? "items" : "amount",
+      message: `One expense in ${currency} can be at most ${formatMoney(max, currency)}.`,
+    });
+    return fail(total, shares);
   }
 
   // 2. Payers.
