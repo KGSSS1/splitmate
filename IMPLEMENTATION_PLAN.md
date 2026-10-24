@@ -2,6 +2,17 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-24: Staging login fix (wrong Supabase URL on Vercel Preview)
+
+- **Symptom:** logging in on staging showed "Something went wrong. Please try again." for a valid, confirmed account.
+- **Cause:**
+  - Vercel's Preview `NEXT_PUBLIC_SUPABASE_URL` was the dashboard link `https://supabase.com/dashboard/project/vnjktzhyvfbnyfzppnkw`, set three days earlier, not the API URL.
+  - Every server-side Auth call went to the wrong host, and the error had no code, so it showed the generic message. Nobody had logged in to staging before, so it went unnoticed.
+  - Reproduced on staging with a made-up account (generic error), while a direct Auth call with the same key answered `invalid_credentials`.
+- **Fix (approved 2026-10-24):** the Preview value is now `https://vnjktzhyvfbnyfzppnkw.supabase.co` (read back to check). `staging` was pushed (`a83c108`), and the preview `splitmate-jv3thw3jx` was Ready in 31 s; the branch URL serves it. The same made-up-account login now answers "Incorrect email or password."
+- **Guard:** `src/lib/env.ts` now requires an API base URL for `NEXT_PUBLIC_SUPABASE_URL` (no path, not `supabase.com`), so a dashboard link fails the build with a clear message. Regression test in `tests/unit/env.test.ts`; `docs/deployment.md` says which URL to use.
+- **Not checked:** a real login with your account (only you have its password).
+
 ### 2026-10-24: Staging sign-up fix (auth users deleted outside the app)
 
 - **Symptom:** creating a user in the staging dashboard failed with "Database error creating new user".
