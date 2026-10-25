@@ -4,8 +4,26 @@
     {
       "name": "splitmate-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3100"],
-      "port": 3100
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3200"
+      ],
+      "port": 3200
+    },
+    {
+      "name": "splitmate-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start",
+        "--",
+        "--port",
+        "3300"
+      ],
+      "port": 3300
     }
   ]
 }

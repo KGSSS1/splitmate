@@ -101,6 +101,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"exchange_rates": {
+                  Row: {
+                    "base": string,"created_at": string,"id": string,"provider": string,"quote": string,"rate": number,"rate_date": string,"retrieved_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "base": string,"created_at"?: string,"id"?: string,"provider": string,"quote": string,"rate": number,"rate_date": string,"retrieved_at"?: string
+                  }
+                  Update: {
+                    "base"?: string,"created_at"?: string,"id"?: string,"provider"?: string,"quote"?: string,"rate"?: number,"rate_date"?: string,"retrieved_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"expense_item_assignments": {
                   Row: {
                     "created_at": string,"id": string,"item_id": string,"user_id": string,"weight": number
@@ -632,6 +646,9 @@ isOneToOne: false
 "delete_friend_request":
 { Args: { "p_friendship_id": string }; Returns: undefined
                            },
+"delete_my_account":
+{ Args: { "p_confirmation": string }; Returns: undefined
+                           },
 "direct_expenses_with":
 { Args: { "p_friend_id": string,"p_limit"?: number,"p_offset"?: number }; Returns: {
               "amount": number,"category": string,"currency": string,"description": string,"expense_date": string,"id": string,"status": string,"total_count": number,"version": number
@@ -670,6 +687,11 @@ isOneToOne: false
 "invitation_preview":
 { Args: { "p_group_id"?: string,"p_token": string }; Returns: {
               "expires_at": string,"group_id": string,"group_name": string,"group_type": string,"invited_email": string,"inviter_name": string,"member_count": number,"status": string
+            }[]
+                           },
+"latest_exchange_rates":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "base": string,"provider": string,"quote": string,"rate": string,"rate_date": string,"retrieved_at": string
             }[]
                            },
 "leave_group":

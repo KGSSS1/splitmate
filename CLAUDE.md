@@ -23,12 +23,14 @@ SplitMate is an original expense-sharing web app (inspired by Splitwise's core f
 | Unit tests (Vitest, jsdom) | `npm test` (watch: `npm run test:watch`) |
 | Integration tests (Vitest, local Supabase) | `npm run test:integration` |
 | E2E tests (Playwright) | `npm run test:e2e` |
+| E2E tests against staging (needs `.env.e2e.local`) | `npm run test:e2e:staging` |
 | Database tests (pgTAP) | `npm run db:test` |
 | Build | `npm run build` |
 | Start local Supabase | `npm run db:start` (stop: `npm run db:stop`) |
 | Reset local DB (migrations + seed) | `npm run db:reset` |
 | Generate DB types | `npm run db:types` → `src/types/database.types.ts` |
 | Run the recurring-expense generator now (local) | `npm run db:recurring` |
+| Fetch today's exchange rates now (local) | `npm run db:rates` |
 
 Local Supabase needs Docker. `.env.local` values come from `npx supabase status`.
 

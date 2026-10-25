@@ -21,9 +21,9 @@ select public.create_expense(tests.uid('rls-d1'), null, 'Taxi', 20000, 'INR', cu
                              tests.debts('erin', 'alice', '10000'));
 select public.create_invitation(tests.group_id('RLS group'));
 insert into storage.objects (bucket_id, name, owner_id)
-values ('receipts', tests.expense_id('rls-e1') || '/receipt.jpg', tests.uid('alice'));
+values ('receipts', tests.expense_id('rls-e1') || '/' || tests.uid('rls-receipt') || '.jpg', tests.uid('alice'));
 insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes)
-values (tests.expense_id('rls-e1'), tests.uid('alice'), tests.expense_id('rls-e1') || '/receipt.jpg', 'image/jpeg', 1000);
+values (tests.expense_id('rls-e1'), tests.uid('alice'), tests.expense_id('rls-e1') || '/' || tests.uid('rls-receipt') || '.jpg', 'image/jpeg', 1000);
 select tests.authenticate_as('bob');
 insert into public.comments (expense_id, author_id, body) values (tests.expense_id('rls-e1'), tests.uid('bob'), 'Thanks!');
 insert into public.notification_preferences (user_id, type, in_app) values (tests.uid('bob'), 'member_joined', false);
@@ -76,9 +76,9 @@ grant execute on function tests.visible_rows() to authenticated;
 -- ---------------------------------------------------------------- non-member (dave)
 select tests.authenticate_as('dave');
 select results_eq(
-  $$ select table_name from tests.visible_rows() where row_count > 0 order by 1 $$,
+  $$ select table_name from tests.visible_rows() where row_count > 0 and table_name <> 'exchange_rates' order by 1 $$,
   $$ values ('profiles'::text) $$,
-  'non-member: every exposed table is empty except their own profile');
+  'non-member: every exposed table is empty except their own profile (and public exchange rates)');
 select is((select count(*)::int from public.expense_items), 0, 'non-member: no itemized lines');
 select is((select count(*)::int from public.expense_item_assignments), 0, 'non-member: no item assignments');
 select is((select count(*)::int from public.recurring_occurrences), 0, 'non-member: no recurring occurrences');

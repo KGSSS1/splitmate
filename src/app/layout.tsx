@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { OfflineBanner, ServiceWorkerRegistrar } from "@/components/pwa/pwa";
 import { brand } from "@/config/brand";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
   },
   description: brand.description,
   applicationName: brand.name,
+  appleWebApp: { capable: true, title: brand.shortName, statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -45,7 +47,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <OfflineBanner />
+        {children}
+        <ServiceWorkerRegistrar />
+      </body>
     </html>
   );
 }

@@ -7,6 +7,7 @@ export const ROUTES = {
   resetPassword: "/reset-password",
   updatePassword: "/reset-password/update",
   authConfirm: "/auth/confirm",
+  authContinue: "/auth/continue",
   onboarding: "/onboarding",
   dashboard: "/dashboard",
   settings: "/settings",
@@ -23,6 +24,8 @@ export const ROUTES = {
   notifications: "/notifications",
   search: "/search",
   analytics: "/analytics",
+  accountDeleted: "/account-deleted",
+  dataExport: "/settings/export",
 } as const;
 
 /**
@@ -38,6 +41,7 @@ const GUEST_PATHS = new Set<string>([
   ROUTES.signup,
   ROUTES.checkEmail,
   ROUTES.resetPassword,
+  ROUTES.accountDeleted,
 ]);
 
 // Invitation links are public so signed-out visitors can be asked to sign up or

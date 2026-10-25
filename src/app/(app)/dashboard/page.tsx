@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ActivityList } from "@/components/activity/activity-list";
+import { ApproximateTotalCard } from "@/components/dashboard/approximate-total";
 import { BalanceSummary } from "@/components/dashboard/balance-summary";
 import { GroupTypeIcon } from "@/components/groups/group-type-icon";
 import { SettlementList } from "@/components/settlements/settlement-list";
@@ -12,10 +13,13 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ROW_LINK_CLASS } from "@/components/shared/row-link";
 import { buttonVariants } from "@/components/ui/button";
 import { ROUTES } from "@/lib/auth/routes";
+import { approximateTotal } from "@/lib/money/convert";
+import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { listActivity } from "@/server/activity";
 import { requireOnboardedProfile } from "@/server/auth";
 import { getBalanceSummary, listPersonBalances } from "@/server/balances";
+import { loadRateTable } from "@/server/exchange-rates";
 import { listMyGroups } from "@/server/groups";
 import { listPendingSettlements, listSettlements } from "@/server/settlements";
 
@@ -31,14 +35,21 @@ const RECENT = 5;
  */
 export default async function DashboardPage() {
   const profile = await requireOnboardedProfile();
-  const [summaries, people, groups, pending, settlements, activity] = await Promise.all([
+  const [summaries, people, groups, pending, settlements, activity, rates] = await Promise.all([
     getBalanceSummary(),
     listPersonBalances(),
     listMyGroups(),
     listPendingSettlements(),
     listSettlements({ kind: "mine" }),
     listActivity({ limit: RECENT }),
+    createClient().then(loadRateTable),
   ]);
+  // Only worth showing when some balance is in another currency than the default.
+  const converted = summaries.some((summary) => summary.currency !== profile.default_currency)
+    ? rates
+      ? approximateTotal(summaries, profile.default_currency, rates)
+      : null
+    : undefined;
   const groupsWithBalance = groups.filter((group) => group.myBalances.length > 0);
 
   return (
@@ -81,6 +92,7 @@ export default async function DashboardPage() {
             Net balances across all groups and friends, per currency. In groups that simplify debts, they follow the
             group&apos;s simplified plan. Repayments count once they&apos;re completed.
           </p>
+          {converted === undefined ? null : <ApproximateTotalCard total={converted} />}
         </section>
       )}
 

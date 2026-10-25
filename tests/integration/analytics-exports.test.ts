@@ -285,7 +285,8 @@ describe("analytics, exports, search and notifications against local Supabase", 
       amount: "2000",
     });
     if (!recurring.ok) throw new Error("recurring payload");
-    const { p_items: _items, ...recurringPayload } = buildExpensePayload(recurring.expense);
+    const { p_items: recurringItems, ...recurringPayload } = buildExpensePayload(recurring.expense);
+    expect(recurringItems ?? null).toBeNull();
     const template = await asB.rpc("create_recurring_expense", {
       ...recurringPayload,
       p_idempotency_key: randomUUID(),
@@ -349,7 +350,10 @@ describe("analytics, exports, search and notifications against local Supabase", 
     expect(header).toEqual([...EXPENSE_CSV_HEADER]);
     const exportedIds = rows.map((row) => row.at(-1));
     // A can see B's taxi (same group) but took no part in it; D's villa is in another group.
-    expect(exportedIds.sort()).toEqual([ids.dinner, ids.snacks, expect.any(String)].sort());
+    // Her dinner, her direct snacks, and the rent the recurring schedule added.
+    expect(exportedIds).toHaveLength(3);
+    expect(exportedIds).toEqual(expect.arrayContaining([ids.dinner, ids.snacks]));
+    expect(rows.map((row) => row[1])).toEqual(expect.arrayContaining([`Rent ${tag}`]));
     expect(exportedIds).not.toContain(ids.taxi);
     expect(exportedIds).not.toContain(ids.villa);
     const dinner = rows.find((row) => row[1] === `Dinner ${tag}`);

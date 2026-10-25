@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 import { getDefaultTemplateLink } from "./support/mailpit";
+import { IS_REMOTE } from "./support/target";
 
 // Supabase's default email templates ({{ .ConfirmationURL }}) send users
 // through the auth server's /verify endpoint, which redirects to
@@ -8,6 +9,7 @@ import { getDefaultTemplateLink } from "./support/mailpit";
 // Local Supabase uses custom token_hash templates (tests/e2e/auth.spec.ts),
 // so these tests build the default-style link from the same email.
 test.describe.configure({ timeout: 90_000 });
+test.skip(IS_REMOTE, "reads emails from local Mailpit");
 
 /** A visible form control by its exact label (hidden pages stay mounted). */
 function field(page: Page, label: string) {

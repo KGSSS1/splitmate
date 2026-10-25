@@ -1,6 +1,7 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 
 import { getEmailLink } from "./mailpit";
+import { IS_REMOTE, remoteAdmin } from "./target";
 
 export interface Account {
   email: string;
@@ -25,6 +26,7 @@ export function newAccount(): Account {
  * confirmation link from Mailpit. Ends on onboarding, possibly with `?next=`.
  */
 export async function signUpAndVerify(page: Page, account: Account, { from = "/signup" }: { from?: string | null } = {}) {
+  if (IS_REMOTE) return remoteSignUp(page, account, from);
   if (from) await page.goto(from);
   await field(page, "Email").fill(account.email);
   await field(page, "Password").fill(account.password);
@@ -33,8 +35,36 @@ export async function signUpAndVerify(page: Page, account: Account, { from = "/s
   await expect(page).toHaveURL(/\/check-email\?for=signup$/);
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
 
-  await page.goto(await getEmailLink(account.email, "Confirm your"));
+  await openEmailLink(page, await getEmailLink(account.email, "Confirm your"));
   await expect(page).toHaveURL(/\/onboarding(\?|$)/);
+}
+
+/**
+ * Staging has no inbox to read: create the account already confirmed through
+ * the Auth admin API (no email is sent), then log in through the app, keeping
+ * any `next` the sign-up page carried. Ends on onboarding, as locally.
+ */
+async function remoteSignUp(page: Page, account: Account, from: string | null) {
+  const { error } = await remoteAdmin().auth.admin.createUser({
+    email: account.email,
+    password: account.password,
+    email_confirm: true,
+  });
+  if (error) throw error;
+  const next = from === null ? new URL(page.url()).searchParams.get("next") : null;
+  await page.goto(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
+  await logIn(page, account);
+  await expect(page).toHaveURL(/\/onboarding(\?|$)/, { timeout: 30_000 });
+}
+
+/**
+ * Opens a token-hash email link: it lands on /auth/continue, and nothing
+ * happens until Continue is pressed (review M9 L3).
+ */
+export async function openEmailLink(page: Page, link: string) {
+  await page.goto(link);
+  await expect(page).toHaveURL(/\/auth\/continue\?/);
+  await page.getByRole("button", { name: "Continue" }).click();
 }
 
 /** Onboarding with a name and the default currency (INR). */

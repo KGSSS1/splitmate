@@ -49,7 +49,7 @@ An explicit value always wins, so **don't** add `NEXT_PUBLIC_APP_URL` to the Pre
    - **Project ref:** the 20-letter ID in the dashboard URL (`/project/<ref>`), also under **Project Settings → General**.
    - **Project URL:** `https://<ref>.supabase.co`.
    - **Publishable key:** **Project Settings → API Keys**. It starts with `sb_publishable_`. If only legacy `anon`/`service_role` keys are shown, create the new API keys there first. Don't use the legacy JWT keys.
-   - **Secret key:** not needed yet. Nothing in the app uses admin access until M9, so don't copy it anywhere.
+   - **Secret key:** the app never needs it (account deletion and exchange rates run inside the database). You only use the **staging** secret key locally for the E2E-against-staging run ([below](#e2e-tests-against-staging)).
 
 ## 2. Link the project and push migrations
 
@@ -83,7 +83,8 @@ Then check in the dashboard:
 
 - **Database → Migrations** lists the same versions as `supabase/migrations/`.
 - **Advisors** — `npx supabase db advisors --linked --type all --level warn`, or **Advisors → Security / Performance Advisor** in the dashboard — show no errors. The expected warnings are:
-  - **22 × WARN `authenticated_security_definer_function_executable`** (rule 0029) since M6: one per public RPC, plus `profile_cards`. This is intended: the RPCs are SECURITY DEFINER on purpose and check `auth.uid()` themselves (see `docs/database.md`). A new function in this list needs a review. The local CLI's advisor doesn't flag these, so the hosted run is the one to check.
+  - **29 × WARN `authenticated_security_definer_function_executable`** (rule 0029) after M9: one per SECURITY DEFINER public RPC (the list in `docs/api.md`), including M9's `delete_my_account`. This is intended: those RPCs are SECURITY DEFINER on purpose and check `auth.uid()` themselves. The SECURITY INVOKER reads (`search_expenses`, `my_expense_shares`, `latest_exchange_rates`, …) aren't flagged. A new function in this list needs a review. The local CLI's advisor doesn't flag these, so the hosted run is the one to check.
+  - **WARN `auth_leaked_password_protection`**: a hosted Auth setting (check new passwords against known leaks), not a migration. Turn it on under **Authentication → Attack Protection** if your plan offers it.
   - **INFO `unused_index`**: expected on a database that has served few or no queries. Revisit it once staging has real traffic.
 - `npx supabase db lint --linked --level warning` reports no issues.
 - **Storage** shows the private `receipts` bucket.
@@ -161,7 +162,7 @@ Supabase only lets you edit email templates once custom SMTP is configured. Unti
 | Link style | Comes from | How it works | Works in any browser? |
 | --- | --- | --- | --- |
 | `?code=…` | Default templates (`{{ .ConfirmationURL }}`) | The link opens Supabase's `/auth/v1/verify`, which confirms the email (or authorizes the reset) and redirects to `<NEXT_PUBLIC_APP_URL>/auth/confirm?code=…`. The app exchanges the code for a session (PKCE). | **No.** The exchange needs the code-verifier cookie stored in the browser that signed up or requested the reset. |
-| `?token_hash=…&type=…` | Custom templates (`supabase/templates/*.html`) | The app verifies the token on the server (`verifyOtp`). | Yes |
+| `?token_hash=…&type=…` | Custom templates (`supabase/templates/*.html`) | The app shows a **Continue** page; pressing it verifies the token on the server (`verifyOtp`). Opening the link alone uses nothing, so mail scanners can't spend it (review M9 L3). | Yes |
 
 With the default templates:
 
@@ -221,7 +222,7 @@ The project is already connected to `KGSSS1/splitmate`. Open <https://vercel.com
 Both Supabase variables currently exist for Production and Preview with the same value. Set them per environment if the values differ.
 
 Don't add these:
-- `SUPABASE_SECRET_KEY`: nothing uses it yet, and it bypasses RLS.
+- `SUPABASE_SECRET_KEY`: the app doesn't use it (account deletion and exchange rates run in the database), and it bypasses RLS.
 - The optional `CRON_SECRET`, `EMAIL_*` and `EXCHANGE_RATE_API_KEY`.
 
 Variables are read at **build** time (`NEXT_PUBLIC_*` values are inlined into the bundle), so after changing one you must redeploy: **Deployments → ⋯ → Redeploy** on the latest deployment of that branch, or push a new commit.
@@ -267,7 +268,7 @@ Vercel builds it as a preview and moves `https://splitmate-git-staging-kgsss1s-p
 
 **Feature branches:** pushing any other branch creates its own preview at `splitmate-git-<branch>-kgsss1s-projects.vercel.app`, which uses the same staging Supabase project. Sign-up emails from a feature branch link back to that branch, which the wildcard redirect URL allows.
 
-**Production:** see [Production (`main`)](#production-main) below. Until production is set up, don't push to `main`.
+**Production:** see [Production (`main`)](#production-main) below. Push `main` only as step P5, with approval.
 
 After each staging deploy:
 
@@ -278,11 +279,104 @@ To roll staging back, click **Redeploy** on an earlier deployment of `staging`, 
 
 ## Production (`main`)
 
-Pushing to `main` builds a production deployment. It needs `NEXT_PUBLIC_APP_URL` set explicitly in the **Production** environment. Until it's set, production builds fail on purpose with a clear message rather than sending email links to a guessed URL. That is the state today: the last two `main` deployments failed this way, and that is expected.
+Production is a **separate Supabase project** and the Vercel **Production** environment, deployed by pushing `main`. Staging data never touches it, and nothing from `supabase/seed.sql` or the tests ever runs against it. Each step below needs the owner's go-ahead (CLAUDE.md).
 
-Production is planned for M9; see [Later: production](#later-production). Until then:
-- Don't push to `main`.
-- If a push happens anyway, the failed build is harmless: the staging preview isn't affected.
+### P1. Create the production Supabase project
+
+1. **New project** in your organization: name `splitmate-prod`, a generated database password (keep it in your password manager), and the same region as staging. Keep the Data API on and leave "Automatically expose new tables" off.
+2. Note its **project ref**, **API URL** (`https://<prod-ref>.supabase.co`) and **publishable key** (`sb_publishable_…`). The app doesn't need the secret key: account deletion and exchange rates run inside the database.
+
+### P2. Push the migrations
+
+The CLI is linked to one project at a time; the link lives in `supabase/.temp/` (git-ignored).
+
+```bash
+npx supabase link --project-ref <prod-ref>
+```
+
+```bash
+npx supabase db push --linked --dry-run
+```
+
+The dry run must list every file in `supabase/migrations/` and **no seed**. Then:
+
+```bash
+npx supabase db push --linked
+```
+
+The migrations enable `pg_cron` and `pg_net` and schedule three jobs: hourly recurring expenses, and the daily exchange-rate request and collect. Check:
+
+```bash
+npx supabase db lint --linked --level warning
+```
+
+```bash
+npx supabase db advisors --linked --type all --level warn
+```
+
+Expect no errors and the same rule-0029 warnings as staging (section 2), nothing else. Then link back to staging so later commands don't hit production by accident:
+
+```bash
+npx supabase link --project-ref <staging-ref>
+```
+
+### P3. Auth settings (production dashboard)
+
+Same as section 3, with production values:
+
+- **Email:** Confirm email on, Secure email change on, Secure password change on, minimum password length 8.
+- **Custom SMTP:** required before real users sign up (the built-in mailer only emails your organization). Use a verified sender, ideally on your own domain.
+- **Email templates:** paste `supabase/templates/confirmation.html` and `recovery.html` (subjects as in section 3). Links then work in any browser and land on the **Continue** page.
+- **URL Configuration:** Site URL = the production URL; Redirect URLs = exactly `<production URL>/**`, with no preview wildcard.
+- **Rate limits:** leave the defaults unless real use needs more.
+
+### P4. Vercel Production environment
+
+**Settings → Environment Variables**, scope **Production** only:
+
+| Key | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<prod-ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the production `sb_publishable_…` |
+| `NEXT_PUBLIC_APP_URL` | the production URL, e.g. `https://splitmate-kgsss1s-projects.vercel.app` or your domain, with no trailing slash |
+
+Make sure the Preview scope keeps the **staging** values; the variables currently share one value across both environments. Don't add `SUPABASE_SECRET_KEY`.
+
+### P5. Deploy
+
+Merge the tested `staging` into `main` and push:
+
+```bash
+git checkout main
+```
+
+```bash
+git merge --ff-only staging
+```
+
+```bash
+git push origin main
+```
+
+```bash
+git checkout staging
+```
+
+Vercel builds the production deployment. A missing variable fails the build with a clear list (`src/lib/env.ts`).
+
+### P6. Smoke test (production)
+
+Use a real address of your own; don't create test data with fake people.
+
+1. `/` loads, and `/dashboard` redirects to `/login`. The response headers include HSTS, `X-Frame-Options: DENY`, `nosniff` and `Referrer-Policy`, and no `X-Powered-By`.
+2. `/manifest.webmanifest` and `/sw.js` load; `/sw.js` is `no-store`.
+3. Sign up, open the confirmation email (it must point at the production URL), press **Continue**, onboard.
+4. Create a group, add an expense, check the dashboard, then cancel the expense.
+5. Settings → **Download everything (JSON)** contains your profile.
+6. The next day, the dashboard shows an approximate total if you have balances in two currencies, or check `exchange_rates` in the dashboard after 15:25 UTC.
+7. *(Optional)* Delete the account from Settings once your balances are zero.
+
+Rollback: **Deployments → (an earlier production deployment) → ⋯ → Promote**, or revert on `main` and push. Database migrations aren't rolled back automatically. Write a new migration instead.
 
 ## Phone test checklist
 
@@ -311,7 +405,7 @@ Report anything off with a screenshot and the step number.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Build fails: "NEXT_PUBLIC_APP_URL is missing: Vercel Production must set it explicitly" | A push to `main` while Production isn't set up. | Expected until launch. See [Production (`main`)](#production-main). |
+| Build fails: "NEXT_PUBLIC_APP_URL is missing: Vercel Production must set it explicitly" | A push to `main` without the Production variables. | [P4](#p4-vercel-production-environment), then redeploy. |
 | Build fails with other "Invalid environment variables" | A Supabase variable is missing for that environment. | Section 4, then redeploy. |
 | Vercel "Authentication required" page, or a redirect to `vercel.com/sso-api` | Deployment Protection is still on. | Section 4, Deployment Protection. |
 | Sign-up says "We can't send email to that address yet" | The address isn't in your Supabase organization (built-in mailer). | Use your Supabase-account email, invite the tester to the org, or set up custom SMTP (**Authentication → Emails → SMTP Settings**). |
@@ -323,16 +417,32 @@ Report anything off with a screenshot and the step number.
 | `db push` hangs at "Initialising login role..." (with `--debug`: `failed to connect to host=aws-0-<region>.pooler.supabase.com … Connection timed out`) | The network blocks Postgres traffic on the pooler's port 5432 even though plain TCP connects (seen on 2026-10-21). The CLI's password-free login role always uses 5432, and the direct `db.<ref>.supabase.co` host is IPv6-only. | Switch networks (e.g. a phone hotspot) and retry. A handshake test that can't trigger a login ban: `psql "host=aws-0-<region>.pooler.supabase.com port=5432 user=postgres.aaaaaaaaaaaaaaaaaaaa dbname=postgres sslmode=require"`. It should fail at once with "tenant/user … not found"; a timeout means 5432 is blocked. Port 6543 (transaction mode) may still work with the database password. |
 | Pages are slow | The function region is far from the Supabase region, or the Free project is waking from a pause. | Match the regions (section 4); restore the project in the Supabase dashboard if it's paused. |
 
-## Later: production
+## E2E tests against staging
 
-When the MVP is ready (after M6, with approval), do these in order:
+`npm run test:e2e:staging` runs the Playwright suite against the deployed staging app. Each run creates throwaway accounts on staging, and the suite deletes them at the end; their test groups and expenses stay as "Deleted user" history.
 
-1. Create a separate Supabase project for production. Push the migrations the same way, set up the same auth settings, and use custom SMTP. Then switch to the custom email templates (section 3), so links work in any browser.
-2. In that project, set **Site URL** to the production URL. List the production URL exactly in **Redirect URLs**, with no wildcard.
-3. In Vercel's **Production** environment, set all three variables: the production Supabase URL and publishable key, and `NEXT_PUBLIC_APP_URL` = the production URL (a custom domain, or the project's production `.vercel.app` domain).
-4. Merge `staging` into `main` and push to deploy.
-5. Turn Deployment Protection back on for previews; it never covers production domains.
-6. Add `SUPABASE_SECRET_KEY` (Production, marked Sensitive) only when a server-only feature needs it (account deletion, M9).
-7. M7's recurring-expense job will need `pg_cron` enabled and scheduled on each hosted project.
+1. Create `.env.e2e.local` in the repo folder. It is git-ignored; never commit it or paste it anywhere:
 
-Never run `seed.sql`, `db reset` or tests against production.
+   ```
+   E2E_BASE_URL=https://splitmate-git-staging-kgsss1s-projects.vercel.app
+   E2E_SUPABASE_URL=https://<staging-ref>.supabase.co
+   E2E_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   E2E_SUPABASE_SECRET_KEY=sb_secret_...
+   ```
+
+   The secret key is the **staging** project's (Project Settings → API Keys). It is only used on your machine, to create accounts that are already confirmed (no emails are sent) and to delete them afterwards. The suite refuses any host without `staging` in it, so it can't run against production.
+
+2. Run it:
+
+   ```bash
+   npm run test:e2e:staging -- --workers=2
+   ```
+
+What differs from a local run:
+- The tests that read emails from local Mailpit are skipped: sign-up by email, password reset by email, and the default-template link tests. They run locally.
+- Timeouts are longer, since a deployed app is slower per request than a warm local server.
+- Supabase Auth's sign-in rate limit (per IP, **Authentication → Rate Limits**) can trip on a full run. Lower `--workers`, or raise the limit on staging only.
+
+## Never against production
+
+Never run `seed.sql`, `db reset`, `--include-seed` or any test against production.

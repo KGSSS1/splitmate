@@ -16,12 +16,14 @@ const subscribe = () => () => {};
 export function SubmitButton({
   pending,
   disabled = false,
+  variant = "default",
   children,
   className,
 }: {
   pending: boolean;
   /** Also disabled while the form can't be saved yet (e.g. an invalid split). */
   disabled?: boolean;
+  variant?: "default" | "destructive";
   children: ReactNode;
   className?: string;
 }) {
@@ -30,6 +32,7 @@ export function SubmitButton({
     <Button
       type="submit"
       size="lg"
+      variant={variant}
       disabled={pending || disabled || !hydrated}
       aria-busy={pending || undefined}
       className={cn("h-11 w-full md:h-9", className)}

@@ -2,6 +2,89 @@
 
 ## Handoff note (latest first)
 
+### 2026-10-25: M9 Conversion, PWA, data export, account deletion and hardening (local; staging and production pending approval)
+
+- **Migrations:**
+  - `20261026090000_rates_account_deletion.sql`:
+    - `exchange_rates` (RLS: signed-in users read; nobody writes).
+    - `pg_net` (in `extensions`) and two `pg_cron` jobs that fetch Frankfurter's ECB rates daily (request 15:20 UTC, collect 15:25 UTC) through `private.request_exchange_rates` / `collect_exchange_rates` / `store_exchange_rates`. Failures are recorded on `private.exchange_rate_requests` and change nothing else.
+    - `latest_exchange_rates()` returns the rates as exact text.
+    - `delete_my_account('DELETE')` (see below).
+  - `20261026091000_security_review_m9.sql`: the review fixes (below).
+- **Approximate total:**
+  - The dashboard card "Approximate total in <default currency>" appears only when some balance is in another currency.
+  - `src/lib/money/convert.ts` converts exactly with BigInt fractions and rounds once. Owed and owing are converted separately and then netted.
+  - The card shows the source and rate date; currencies without a rate are listed as "not included". Without rates it says so, and nothing else reads them.
+  - Locally: `npm run db:rates`. Checked live: $22.50 → ₹2,136.26 at the 23 Oct ECB rates.
+- **PWA:**
+  - `src/app/manifest.ts`; 192/512 icons, a maskable 512 and an Apple icon (`scripts/generate-icons.mjs`).
+  - `public/sw.js` caches only `/_next/static` and `/icons` (cache first). Pages go to the network, with `public/offline.html` as the fallback; data, RSC payloads, route handlers and Server Actions are never touched. It registers in production builds only.
+  - An offline banner shows on every page.
+  - The proxy lets `sw.js` and `offline.html` through, and `sw.js` is served `no-store` with its own CSP.
+  - Next's experimental `useOffline` isn't used: it retries Server Actions after reconnecting, which would be an offline write.
+- **Data export:** Settings → **Your data**: everything as JSON, or 19 per-table CSVs (`GET /settings/export`, live session, RLS decides every row, up to 50,000 rows per table).
+- **Account deletion:**
+  - Settings → **Delete account** (type DELETE) calls `delete_my_account`. In one transaction it:
+    - refuses while any group or direct balance is open;
+    - leaves groups (revoking invitations, withdrawing pending repayments, handing over admin);
+    - withdraws direct pending repayments and cancels the user's recurring expenses;
+    - deletes friendships, sent requests, notifications and preferences;
+    - anonymizes the profile and deletes the auth user, ending every session.
+  - History and other people's balances stay. The goodbye page is `/account-deleted`.
+  - **No secret key is needed anywhere**, and `SUPABASE_SECRET_KEY` stays unset on Vercel.
+- **Security review** (fresh subagent, against SPEC §8; `docs/reviews/review-M9.md`). 1 Medium and 3 Low findings, all fixed with regression tests:
+  - **M1:** a friend request revealed whether the address had an account, through the sender's view of the pending friendship and its audit row. Both are now hidden from the sender.
+  - **L1:** a direct expense could be changed after the friendship ended; it is now frozen, and the friendship is locked during changes and deletion.
+  - **L2:** receipts:
+    - only app-shaped object names are accepted;
+    - other members see a file only once it is attached;
+    - an attached file can't be deleted and swapped.
+  - **L3:** email token links no longer sign in on GET. They open `/auth/continue`, and its **Continue** button (POST) verifies. This also fixes link scanners using up tokens (an M3 known issue).
+  - **Hardening:** HSTS; `avatar_url` https only; `pg_net` in `extensions`, with no API-role rights in `net`.
+- **Lighthouse** (mobile, production build): accessibility **100** and best practices **100**, which includes "no console errors", on 18 pages (landing, login, sign-up, offline, dashboard, groups, group, balances, friends, activity, add expense, expense, settle up, analytics, notifications, search, settings, recurring). Performance 79–100.
+- **E2E against staging:**
+  - `npm run test:e2e:staging` reads `.env.e2e.local`: the staging URL plus the staging project's URL, publishable key and secret key, used only on this machine.
+  - Accounts are created already confirmed through the admin API, so no emails are sent. The Mailpit-only tests are skipped, and the run's accounts are deleted at the end.
+  - Only hosts containing "staging" are accepted. A plain `npm run test:e2e` never reads that file.
+- **Docs:** `SECURITY.md` (new), `docs/api.md` (new), `docs/reviews/review-M9.md` (new), `docs/database.md`, `docs/architecture.md`, `docs/deployment.md` (full production steps P1–P6, E2E against staging, expected advisor warnings now 29 + `auth_leaked_password_protection`), README, CLAUDE.md commands.
+- **Tests:**
+  - Unit (+36):
+    - conversion, with a round-trip property;
+    - the service worker run in a VM sandbox (what it caches and what it leaves alone);
+    - manifest and icons, the proxy matcher, the offline banner, the approximate-total card;
+    - account and data-export actions and routes;
+    - `/auth/confirm` and the Continue action.
+  - pgTAP (+50):
+    - `190_rates_account_deletion` (42);
+    - `070_storage` rewritten (17);
+    - `110` (+4) for M1;
+    - `010`/`020` know `exchange_rates`.
+  - Integration `account-export-deletion` (3): the export holds only visible rows; a real deletion stops the login and the refresh token, history stays, and the email can sign up again.
+  - E2E:
+    - `pwa-account.spec.ts` (×2 viewports): PWA files public; offline banner; JSON export; deletion refused with a balance, then done and signed out.
+    - `pwa-production.spec.ts`: on a production build, the service worker registers, caches only static files and shows the offline page. It runs only with `E2E_PRODUCTION_URL` and passed against `next start`.
+    - The axe and email-link helpers are updated for the Continue page.
+- **Checks:**
+  - Baseline before any change: unit 607, pgTAP 605, integration 37, all passing.
+  - `db reset` from scratch ✓ (23 migrations; one transient Docker container error on the first try, then clean); types regenerated; lint, typecheck and build ✓; `db lint` and advisors (local) ✓, no issues.
+  - Unit 643 ✓. Integration 40 ✓. pgTAP 655 ✓.
+  - Playwright (local, `--workers=2`): 55 passed, 4 skipped (phone-only tests on desktop, and the production-only service-worker test).
+    - 1 failed: the settlements "Confirm" step on desktop didn't see the list disappear within 5 s under load. It passed 4/4 when rerun alone, and that assertion (and its twin) now waits up to 30 s like the other post-action checks.
+    - An M8 integration assertion that depended on UUID sort order was also made order-independent.
+- **Preview config:** `.claude/launch.json` now runs the dev preview on port 3200 (3100 is the E2E port; a preview there made Playwright reuse a server with the wrong email-link URL) and adds `splitmate-prod` on 3300.
+- **Known limitations:**
+  - Access tokens outlive deletion or logout for **reads** until they expire (≤ 1 h); RPCs refuse them.
+  - No rate limits on expense, comment or settlement creation.
+  - The Content-Security-Policy sets only `frame-ancestors`.
+  - Exchange rates cover only ECB currencies (27 of the app's list).
+  - `npm audit` items from earlier milestones remain in dev tooling.
+- **Needs approval, in order:**
+  1. Push both migrations to **staging**.
+  2. Push the `staging` branch.
+  3. Run `npm run test:e2e:staging`, which needs `.env.e2e.local` with the staging secret key, created by you.
+  4. Then production steps P1–P6 in `docs/deployment.md`: create the production project (yours to create), push migrations, Auth/SMTP/templates/URLs, Vercel Production variables, merge to `main`, smoke test.
+- **Next:** v1 is feature-complete after production. Future work: a group-wide export, a nonce CSP, rate limits on writes.
+
 ### 2026-10-25: M8 on staging
 
 - **Approved 2026-10-25.** The dry run showed only `20261025090000_notifications_search_analytics.sql`, with no seeds or roles. It was pushed, and remote history matches local (21 migrations).
@@ -598,10 +681,12 @@
 - [x] M8 migration and branch pushed to staging (approved 2026-10-25)
 
 ### M9 — Multi-currency conversion, PWA, privacy, hardening, deployment
-- [ ] Optional conversion with stored `exchange_rates` (Frankfurter)
-- [ ] Manifest, icons (maskable), minimal service worker, offline banner
-- [ ] Data export and account deletion (anonymization)
-- [ ] Security review vs SPEC §8; `supabase db lint` / advisors clean; `SECURITY.md`
-- [ ] Accessibility pass (Lighthouse ≥ 90 on key mobile pages)
-- [ ] `docs/deployment.md`; production deploy and smoke test — **needs approval**
-- [ ] Full E2E suite passes against staging
+- [x] Optional conversion with stored `exchange_rates` (Frankfurter, fetched by pg_cron + pg_net)
+- [x] Manifest, icons (maskable), minimal service worker, offline banner
+- [x] Data export (JSON + CSV) and account deletion (anonymization)
+- [x] Security review vs SPEC §8 (fresh subagent; findings fixed); `supabase db lint` / advisors clean locally; `SECURITY.md`, `docs/api.md`
+- [x] Accessibility pass (Lighthouse 100 on 18 mobile pages)
+- [x] `docs/deployment.md` production steps
+- [ ] M9 migrations and branch on staging — **needs approval**
+- [ ] Full E2E suite passes against staging — **needs approval and `.env.e2e.local`**
+- [ ] Production deploy and smoke test — **needs approval at each step**

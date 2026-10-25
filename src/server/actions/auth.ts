@@ -8,6 +8,7 @@ import { ROUTES, safeNextPath } from "@/lib/auth/routes";
 import { getClientEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import {
+  emailLinkSchema,
   passwordResetRequestSchema,
   resendConfirmationSchema,
   signInSchema,
@@ -15,7 +16,7 @@ import {
   updatePasswordSchema,
 } from "@/lib/validation/auth";
 import { type ActionResult, invalidInput } from "@/server/action-result";
-import { rememberNextPath } from "@/server/after-auth";
+import { onboardingUrlWithNext, rememberNextPath } from "@/server/after-auth";
 import { requireLiveSession, requireUser } from "@/server/auth";
 
 /** Where email links (confirmation, password reset) land: the token-hash route. */
@@ -121,4 +122,26 @@ export async function signOut(): Promise<void> {
     }
   }
   redirect(ROUTES.login);
+}
+
+const EMAIL_LINK_DESTINATIONS = {
+  email: ROUTES.onboarding,
+  signup: ROUTES.onboarding,
+  recovery: ROUTES.updatePassword,
+} as const;
+
+/**
+ * Verifies a token-hash email link when its owner presses Continue on
+ * /auth/continue (review M9 L3: opening the link alone signs nobody in).
+ * Bound to a plain <form>, so it works before JavaScript loads.
+ */
+export async function confirmEmailLink(formData: FormData): Promise<void> {
+  const link = emailLinkSchema.safeParse({ tokenHash: formData.get("token_hash"), type: formData.get("type") });
+  if (!link.success) redirect(`${ROUTES.login}?error=link`);
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({ type: link.data.type, token_hash: link.data.tokenHash });
+  if (error) redirect(`${ROUTES.login}?error=link`);
+  // redirect() keeps the session cookies that verifyOtp just set.
+  const destination = EMAIL_LINK_DESTINATIONS[link.data.type];
+  redirect(destination === ROUTES.onboarding ? await onboardingUrlWithNext() : destination);
 }

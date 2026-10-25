@@ -67,6 +67,9 @@ Local services: Studio <http://127.0.0.1:54323>, Mailpit (auth emails) <http://1
 - Password reset emails also land in Mailpit.
 - **Recurring expenses:** on Add expense, set "Repeat" (or use Recurring → Add recurring expense). Anything due up to today is added when you save. Later dates are added by the hourly `pg_cron` job while the local stack runs; to add due ones right away, run `npm run db:recurring`.
 - **Receipts:** open an expense and use "Add receipt" (JPEG, PNG, WebP or PDF, up to 5 MB).
+- **Approximate total:** run `npm run db:rates` once (it fetches today's ECB rates from Frankfurter into the local database). Alice's dashboard then shows her INR and USD balances as one approximate INR figure.
+- **Install as an app / offline:** the service worker registers in production builds only (`npm run build`, then `npm start`). Turn the network off in DevTools to see the offline banner and offline page.
+- **Your data:** Settings → **Your data** downloads everything as JSON, or one table as CSV. Settings → **Delete account** works once your balances are zero (try it as `dave@example.test`).
 - **Notifications, search, analytics:** log in as Alice and open Notifications (unread badge in the sidebar or the bell on phones), Search, or Analytics (filters, Chart/Table toggles, "Print or save as PDF", Expenses CSV and Repayments CSV). Turn notification types on or off in Settings → Notifications.
 - After changing `supabase/config.toml` or `supabase/templates/`, restart the stack (`npm run db:stop` then `npm run db:start`).
 - Email links go to `NEXT_PUBLIC_APP_URL`/auth/confirm. That URL must match `additional_redirect_urls` in `supabase/config.toml` (`http://localhost:3000/**` and the E2E port `http://localhost:3100/**` are allowed).
@@ -81,13 +84,23 @@ Local services: Studio <http://127.0.0.1:54323>, Mailpit (auth emails) <http://1
 | Integration tests (Vitest against the local Supabase stack) | `npm run test:integration` |
 | End-to-end tests (Playwright; starts its own dev server on port 3100, reads emails from Mailpit; needs the local stack) | `npm run test:e2e` |
 | Database tests (pgTAP; needs the local stack) | `npm run db:test` |
+| End-to-end tests against the staging deployment (needs `.env.e2e.local`, see docs/deployment.md) | `npm run test:e2e:staging` |
+| Service worker in a production build (`npm run build`, then `npm start -- --port 3300`) | `E2E_PRODUCTION_URL=http://localhost:3300 npx playwright test tests/e2e/pwa-production.spec.ts` |
 | Production build | `npm run build` then `npm start` |
 
 `npm run dev`, `npm run build` and `npm run test:e2e` need a valid `.env.local`; a missing or wrong variable stops startup with a list of what to fix.
 
 ## Deployment
 
-Staging (hosted Supabase + Vercel preview) and the later production setup are described step by step in [docs/deployment.md](docs/deployment.md).
+Staging (hosted Supabase + Vercel preview) and production are described step by step in [docs/deployment.md](docs/deployment.md).
+
+## More documentation
+
+- [SECURITY.md](SECURITY.md): threat model, how access is enforced, known limits, how to report a vulnerability.
+- [docs/api.md](docs/api.md): every database function, route handler and Server Action, and what each checks.
+- [docs/database.md](docs/database.md): schema, RLS, functions, jobs, tests.
+- [docs/architecture.md](docs/architecture.md): the accounting engine and each feature's design.
+- [docs/reviews/](docs/reviews/): independent review findings and their fixes.
 
 ## Project layout
 

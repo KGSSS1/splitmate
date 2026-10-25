@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-import { field, logIn, logOut, newAccount, newPersonPage, signUpAndVerify } from "./support/accounts";
+import { field, logIn, logOut, newAccount, newPersonPage, openEmailLink, signUpAndVerify } from "./support/accounts";
 import { getEmailLink } from "./support/mailpit";
+import { IS_REMOTE } from "./support/target";
 
 // Runs against local Supabase only: emails are read from its Mailpit inbox.
 // Each flow visits several pages, which the dev server compiles on first use.
@@ -11,6 +12,7 @@ test("sign up, verify by email, onboard, log out and back in to an empty dashboa
   page,
   isMobile,
 }) => {
+  test.skip(IS_REMOTE, "reads the confirmation email from local Mailpit");
   const account = newAccount();
   await signUpAndVerify(page, account);
 
@@ -58,6 +60,7 @@ test("sign up, verify by email, onboard, log out and back in to an empty dashboa
 });
 
 test("password reset by email", async ({ page }) => {
+  test.skip(IS_REMOTE, "reads the reset email from local Mailpit");
   const account = newAccount();
   await signUpAndVerify(page, account);
   await page.getByRole("button", { name: "Continue" }).click();
@@ -71,7 +74,7 @@ test("password reset by email", async ({ page }) => {
   await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(page).toHaveURL(/\/check-email\?for=reset$/);
 
-  await page.goto(await getEmailLink(account.email, "Reset your"));
+  await openEmailLink(page, await getEmailLink(account.email, "Reset your"));
   await expect(page).toHaveURL(/\/reset-password\/update$/);
   const newPassword = `${account.password}-new`;
   await field(page, "New password").fill(newPassword);
@@ -89,14 +92,17 @@ test("password reset by email", async ({ page }) => {
 });
 
 test("an invalid email link explains itself on the login page", async ({ page }) => {
-  await page.goto("/auth/confirm?token_hash=not-a-real-token&type=email");
+  // Opening it changes nothing; pressing Continue finds the token invalid.
+  await openEmailLink(page, "/auth/confirm?token_hash=not-a-real-token&type=email");
   await expect(page).toHaveURL(/\/login\?error=link$/);
   await expect(page.getByText("That link is invalid or has expired.")).toBeVisible();
 });
 
 // Review M6 (C1): "/.//host" normalises to "//host", which the client router
 // used to follow to another origin after logging in or onboarding.
-test("a dot-segment `next` can't send a signed-in user to another site", async ({ page, browser }) => {
+test("a dot-segment `next` can't send a signed-in user to another site", async ({ page, browser, baseURL }) => {
+  // The dashboard on this app's own origin (local or staging), nothing else.
+  const sameOrigin = new URL("/dashboard", baseURL).toString();
   const account = newAccount();
   await signUpAndVerify(page, account);
   await field(page, "Your name").fill("Redirect Test");
@@ -105,13 +111,13 @@ test("a dot-segment `next` can't send a signed-in user to another site", async (
 
   // Already onboarded: /onboarding forwards to `next` straight away.
   await page.goto("/onboarding?next=%2F.%2F%2Fevil.example%2Fpwned");
-  await expect(page).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
+  await expect(page).toHaveURL(sameOrigin);
 
   // Logging in (in a fresh browser) with the same kind of `next`.
   const other = await newPersonPage(browser);
   await other.goto("/login?next=%2F.%2F%2Fevil.example%2Fpwned-login");
   await logIn(other, account);
-  await expect(other).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
+  await expect(other).toHaveURL(sameOrigin);
   await other.context().close();
 });
 

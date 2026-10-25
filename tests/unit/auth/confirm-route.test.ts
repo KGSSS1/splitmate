@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET } from "@/app/auth/confirm/route";
+import { confirmEmailLink } from "@/server/actions/auth";
 
 const auth = vi.hoisted(() => ({ verifyOtp: vi.fn(), exchangeCodeForSession: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth }) }));
@@ -31,6 +32,20 @@ async function landing(query: string): Promise<string> {
   throw new Error("expected a redirect");
 }
 
+/** Pressing Continue on /auth/continue (the form posts token_hash and type). */
+async function pressContinue(fields: Record<string, string>): Promise<string> {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) form.set(name, value);
+  try {
+    await confirmEmailLink(form);
+  } catch (error) {
+    return String((error as Error).message).replace("REDIRECT:", "");
+  }
+  throw new Error("expected a redirect");
+}
+
+const TOKEN = "pkce_0123456789abcdef";
+
 describe("/auth/confirm", () => {
   beforeEach(() => {
     auth.verifyOtp.mockReset().mockResolvedValue({ error: null });
@@ -39,18 +54,36 @@ describe("/auth/confirm", () => {
   });
 
   describe("token_hash links (custom templates)", () => {
-    it("confirms sign-up and goes to onboarding", async () => {
-      expect(await landing("token_hash=abc&type=email")).toBe("/onboarding");
-      expect(auth.verifyOtp).toHaveBeenCalledWith({ type: "email", token_hash: "abc" });
+    // Review M9 L3: opening the link uses nothing; Continue (a POST) verifies.
+    it("forwards to the Continue page without using the token", async () => {
+      expect(await landing(`token_hash=${TOKEN}&type=email`)).toBe(`/auth/continue?token_hash=${TOKEN}&type=email`);
+      expect(await landing(`token_hash=${TOKEN}&type=recovery`)).toBe(`/auth/continue?token_hash=${TOKEN}&type=recovery`);
+      expect(auth.verifyOtp).not.toHaveBeenCalled();
     });
 
-    it("sends password recovery to the new-password page", async () => {
-      expect(await landing("token_hash=abc&type=recovery")).toBe("/reset-password/update");
-    });
-
-    it("rejects invalid tokens", async () => {
-      auth.verifyOtp.mockResolvedValue({ error: { code: "otp_expired" } });
+    it("rejects malformed links and unknown types up front", async () => {
       expect(await landing("token_hash=abc&type=email")).toBe("/login?error=link");
+      expect(await landing(`token_hash=${TOKEN}&type=magiclink`)).toBe("/login?error=link");
+      expect(await landing(`token_hash=${TOKEN}`)).toBe("/login?error=link");
+      expect(await landing(`token_hash=${encodeURIComponent("x/../evil")}&type=email`)).toBe("/login?error=link");
+    });
+
+    it("Continue confirms sign-up and goes to onboarding", async () => {
+      expect(await pressContinue({ token_hash: TOKEN, type: "email" })).toBe("/onboarding");
+      expect(auth.verifyOtp).toHaveBeenCalledWith({ type: "email", token_hash: TOKEN });
+    });
+
+    it("Continue on a password reset goes to the new-password page", async () => {
+      expect(await pressContinue({ token_hash: TOKEN, type: "recovery" })).toBe("/reset-password/update");
+    });
+
+    it("Continue rejects invalid or used tokens, and forged form fields", async () => {
+      auth.verifyOtp.mockResolvedValue({ error: { code: "otp_expired" } });
+      expect(await pressContinue({ token_hash: TOKEN, type: "email" })).toBe("/login?error=link");
+      auth.verifyOtp.mockClear();
+      expect(await pressContinue({ token_hash: TOKEN, type: "invite" })).toBe("/login?error=link");
+      expect(await pressContinue({})).toBe("/login?error=link");
+      expect(auth.verifyOtp).not.toHaveBeenCalled();
     });
   });
 
@@ -86,9 +119,9 @@ describe("/auth/confirm", () => {
   describe("a destination remembered at sign-up", () => {
     it("is carried to onboarding once, then forgotten", async () => {
       jar.set("splitmate-next", "/invite/tok?group=g1");
-      expect(await landing("token_hash=abc&type=email")).toBe("/onboarding?next=%2Finvite%2Ftok%3Fgroup%3Dg1");
+      expect(await pressContinue({ token_hash: TOKEN, type: "email" })).toBe("/onboarding?next=%2Finvite%2Ftok%3Fgroup%3Dg1");
       expect(jar.has("splitmate-next")).toBe(false);
-      expect(await landing("token_hash=abc&type=email")).toBe("/onboarding");
+      expect(await pressContinue({ token_hash: TOKEN, type: "email" })).toBe("/onboarding");
     });
 
     it("also applies to ?code= links", async () => {
@@ -99,12 +132,12 @@ describe("/auth/confirm", () => {
 
     it("is ignored when it is not a safe path", async () => {
       jar.set("splitmate-next", "https://evil.example");
-      expect(await landing("token_hash=abc&type=email")).toBe("/onboarding");
+      expect(await pressContinue({ token_hash: TOKEN, type: "email" })).toBe("/onboarding");
     });
 
     it("never redirects a password reset", async () => {
       jar.set("splitmate-next", "/groups/g1");
-      expect(await landing("token_hash=abc&type=recovery")).toBe("/reset-password/update");
+      expect(await pressContinue({ token_hash: TOKEN, type: "recovery" })).toBe("/reset-password/update");
     });
   });
 

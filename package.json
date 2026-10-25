@@ -12,12 +12,14 @@
     "test:watch": "vitest --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
+    "test:e2e:staging": "playwright test --config playwright.staging.config.ts",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:types": "supabase gen types typescript --local > src/types/database.types.ts",
-    "db:recurring": "docker exec supabase_db_splitmate psql -U postgres -d postgres -Atc \"select private.generate_recurring_expenses() as created\""
+    "db:recurring": "docker exec supabase_db_splitmate psql -U postgres -d postgres -Atc \"select private.generate_recurring_expenses() as created\"",
+    "db:rates": "docker exec supabase_db_splitmate psql -U postgres -d postgres -Atc \"select private.request_exchange_rates()\" -c \"select pg_sleep(5)\" -c \"select private.collect_exchange_rates() as stored\""
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

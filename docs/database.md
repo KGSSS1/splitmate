@@ -15,6 +15,7 @@ Docker must be running.
 | Lint functions (plpgsql_check) | `npx supabase db lint --local --level warning` |
 | Security and performance advisors | `npx supabase db advisors --local --type all --level warn` |
 | Run the recurring-expense generator now | `npm run db:recurring` (prints how many expenses it created) |
+| Fetch today's exchange rates now | `npm run db:rates` (queues the Frankfurter request, waits 5 s, stores the answer; prints how many rates) |
 | Stop the stack | `npm run db:stop` |
 
 `db:reset` only touches the local database. Never run `supabase db reset --linked` or `supabase db push` without explicit approval (see `CLAUDE.md`).
@@ -38,7 +39,7 @@ The expenses are spread over the last three months and several categories, so an
 | --- | --- |
 | Identity and social | `profiles`, `friendships`, `groups`, `group_members`, `group_invitations` |
 | Expenses and accounting | `expenses`, `expense_payers`, `expense_participants`, `expense_items`, `expense_item_assignments`, `settlements`, `ledger_entries` |
-| Other | `recurring_expenses`, `recurring_occurrences`, `attachments`, `comments`, `notifications`, `notification_preferences`, `audit_events` |
+| Other | `recurring_expenses`, `recurring_occurrences`, `attachments`, `comments`, `notifications`, `notification_preferences`, `audit_events`, `exchange_rates` (M9) |
 
 `exchange_rates` is added only when currency conversion is implemented (M9).
 
@@ -136,6 +137,40 @@ All of them only sum ledger rows and run with the caller's rights, so RLS applie
 - **Scheduling:** `pg_cron` job `splitmate-recurring-expenses` runs the generator hourly (`5 * * * *`), so a template is added soon after midnight in its own time zone. Locally nothing runs unless the stack is up; use `npm run db:recurring` (it runs the function through `docker exec … psql`).
 - **Statuses:** `active`, `paused` (resuming skips the dates that passed while paused), `ended` (no dates left before the end date) and `cancelled` (final; expenses already added stay).
 
+### Exchange rates (M9)
+
+- `exchange_rates` holds one row per provider, base, quote and publication date. The rate is units of `quote` per one `base`, kept exactly (`numeric(24,10)`). Frankfurter publishes ECB reference rates against EUR; only currencies in `currency_code` are stored.
+- **Who writes:** only the database. `pg_cron` runs `private.request_exchange_rates()` at 15:20 UTC (`splitmate-exchange-rates-request`), which queues an HTTP GET through `pg_net` and records the request ID in `private.exchange_rate_requests`. `private.collect_exchange_rates()` runs at 15:25 UTC (`splitmate-exchange-rates-collect`); it reads the matching `net._http_response` and stores the rates with `private.store_exchange_rates`.
+  - A failed or malformed response is recorded on the request row and changes nothing else.
+  - Rates older than 400 days and request rows older than 30 days are pruned.
+- **Who reads:** signed-in users, through RLS (`select … using (true)`) or `latest_exchange_rates()`, which returns the newest rate per currency as exact text. Clients can't write rates, and API roles have no rights in the `net` schema.
+- **What uses them:** only the dashboard's "Approximate total in <your currency>" card (`src/lib/money/convert.ts`, BigInt arithmetic, rounded once). Balances, settlements and every stored amount stay in their own currencies. With no rates (a fresh database, the provider down) the card says so, and nothing else changes.
+- Locally, run `npm run db:rates` to fetch them (the stack needs internet access).
+
+### Account deletion (M9)
+
+`delete_my_account('DELETE')` deletes the caller's account in one transaction, as SPEC §6 describes:
+
+1. Locks the profile and the caller's friendships. It refuses (SM409) while the caller has a non-zero net in any current group or a non-zero direct balance with anyone, in any currency.
+2. Leaves every group through `private.end_membership`, which revokes the caller's invitations, withdraws pending repayments in the group and hands over admin. It also withdraws pending direct repayments (notifying the other person), cancels the caller's active or paused recurring expenses, and revokes pending invitations addressed to their email.
+3. Deletes their friendships, the friend requests they sent, their notifications and their notification preferences.
+4. Audits `account.deleted`, anonymizes the profile ("Deleted user", no email or avatar, `deleted_at` set) and deletes the `auth.users` row, which removes their identities, sessions and refresh tokens. The `on_auth_user_deleted` trigger anonymizes again (no-op).
+
+Expenses, payers, shares, items, settlements, comments, receipts, the ledger and audit rows stay unchanged, so other people's balances and history are still correct; they show "Deleted user". The same email can sign up again as a new person. No secret key is involved: the function runs as its owner (`postgres`), which may delete from `auth.users`.
+
+### Security review M9 changes
+
+`20261026091000_security_review_m9.sql` (`docs/reviews/review-M9.md`):
+
+- **Friendships:** pending friendships are visible to their recipient only.
+- **Audit rows:** the sender's own `friend.requested` / `friend.withdrawn` audit rows are hidden, so a friend request reveals nothing about the address.
+- **Direct expenses:** they can't be changed once the two are no longer friends, and the friendship is locked during the change.
+- **Receipts:**
+  - Objects must be named `<expense id>/<uuid>.<jpg|png|webp|pdf>`.
+  - Other members see an object only once its `attachments` row exists (the uploader sees their own pending upload).
+  - An attached object can't be deleted, so it can't be swapped.
+- **Hardening:** `profiles.avatar_url` must be https; `pg_net` lives in `extensions`, and API roles have no rights in `net`.
+
 ## RPC functions
 
 All functions require a signed-in user. Payloads use minor units, and the shares and pairwise entries come from `src/lib/accounting`; SQL never re-implements split math.
@@ -167,6 +202,8 @@ All functions require a signed-in user. Payloads use minor units, and the shares
 | `group_names(group_ids)` | Names of groups the caller is or was in |
 | `group_invitation_list(group_id)` | A group's invitations for current members, addresses masked unless creator or admin |
 | `settle_up_with_friend(idempotency_key, friend_id, items, method?, upi_reference?, note?, settled_on?)` | `items` are `[{group_id, currency, amount}]`, computed by the server; positive amount = the friend pays the caller. One settlement per item, in one transaction. Checks: raw contexts must match the pairwise balance exactly; simplify-on groups need the right direction and no more than either net (SM409 otherwise); both people must be current members of each group (SM403). Owed to the caller → completed; owed by the caller → pending. The key is stored as `settlements.batch_id`, so a retry (even a concurrent one) returns the same IDs |
+| `delete_my_account(confirmation)` | `'DELETE'` only. Refused (SM409) while any group or direct balance is open; otherwise leaves groups, cleans up personal data, anonymizes the profile and deletes the auth user in one transaction (see "Account deletion"). SECURITY DEFINER |
+| `latest_exchange_rates()` | The newest stored rate per currency, as exact text. SECURITY INVOKER |
 | `mark_notifications_read(ids?)` | The caller's notifications: the given IDs (at most 100), or every unread one when `ids` is null. Returns how many changed; read ones keep their time. SECURITY INVOKER (RLS) |
 | `set_notification_preferences(preferences)` | `{"expense_added": false, …}`: in-app on/off per type, upserted into `notification_preferences` (no row = on). Unknown types and non-booleans are SM422. `private.notify` skips types that are off |
 | `search_expenses(query, categories?, limit?, offset?)` | Expenses the caller can see (RLS) whose description, notes, category key or tags contain every word of the query (case-insensitive substrings, so `%` and `_` are plain characters), or whose category is in `categories` (the app passes the categories whose label matches). Newest first, with `total_count`. At most 100 characters (SM422) |
@@ -200,17 +237,18 @@ Functions raise these SQLSTATEs. The message is safe to show to users. `23xxx` c
 | `040_settlements` | All status transitions, who may act, never counted twice, reversals, the SPEC §17 numbers |
 | `050_invitations` | Hashed tokens, acceptance and auto-friendship, expired, revoked, reused, wrong-group and wrong-email tokens, rate limit |
 | `060_membership` | Leave and remove rules across currencies, what a removed member can no longer do, admin handover, rejoining |
-| `070_storage` | Receipt upload, read and delete permissions |
+| `070_storage` | Receipt upload, read and delete permissions: app-shaped names only, others see a file once attached, no delete while attached (review M9 L2) |
 | `080_balances` | Group and friend balances, currency separation, ledger sums to zero |
 | `090_security_review` | Regression tests for the findings of the M2 security review (rerouted debts, rejoining after removal, frozen history, and more) |
 | `100_service_role_grants` | Explicit `service_role` grants (hosted projects no longer add them by default) |
-| `110_friends_groups` | Group type and settings, member roles, friend requests (all outcomes, rate limit), invitation preview, invitations addressed to you |
+| `110_friends_groups` | Group type and settings, member roles, friend requests (all outcomes, rate limit, and the sender sees nothing that reveals an account: review M9 M1), invitation preview, invitations addressed to you |
 | `120_balances_settle_up` | The M6 balance read functions (including outsiders seeing nothing), "settle up everything" (statuses, idempotent retry, skipped groups, notifications), settlement input checks, privileges |
 | `130_review_m6` | Review M6 Highs: a removed member can't rejoin through an older link; `my_activity` visibility and cost |
 | `140_review_batch1` | Review batch 1: `withdrawn`, one open payment per debt, per-currency maximum and balance range, split-detail checks, history and empty saves, neutral friend requests, former members and group names, no direct group updates, masked invitee addresses |
 | `150_review_batch2` | Review batch 2: idempotency keys scoped to their creator (expenses, settlements, settle-up batches); pairwise balances net debts in both directions |
 | `160_recurring_receipts` | M7: schedule arithmetic (month ends, 29 February), the generator run repeatedly (each occurrence once), catch-up, time zones, end dates, create/edit/pause/resume/cancel with their checks and audit, failed occurrences, the pg_cron job, receipt limits and non-members denied |
 | `180_notifications_search_analytics` | M8: `my_expense_shares` against the raw tables (current version only, no cancelled or out-of-range rows, other groups hidden, paging, anonymous denied); `search_expenses` (all words, notes and tags, `%` literal, category list, members see group expenses they aren't in, other groups hidden, length limit); marking read only your own notifications; preferences stop and restart notifications, with input checks |
+| `190_rates_account_deletion` | M9: storing rates (only supported currencies, exact, one row per day, bad responses refused), collecting pg_net responses (stored, failed, waiting, given up), users can read but not write rates or call the private functions, the cron jobs; account deletion refused with a group or direct balance and with a wrong confirmation, then everything it does (anonymized, auth user gone, groups left with admin handed over, pending repayment withdrawn, recurring cancelled, personal rows gone, history kept, audited), the old token refused, and a direct expense with the deleted account frozen (review M9 L1) |
 | `170_auth_user_deletion` | An auth user deleted outside the app: profile anonymized, history kept, the email can sign up again; leftover profiles free their email at sign-up |
 
 "Concurrent edit" is tested sequentially: an edit based on a stale version is rejected. Real concurrent edits are serialized by the `FOR UPDATE` lock on the expense row.

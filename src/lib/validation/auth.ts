@@ -52,3 +52,13 @@ export type SignUpInput = z.input<typeof signUpSchema>;
 export type SignInInput = z.input<typeof signInSchema>;
 export type PasswordResetRequestInput = z.input<typeof passwordResetRequestSchema>;
 export type UpdatePasswordInput = z.input<typeof updatePasswordSchema>;
+
+/** Email link types the app sends with token-hash links (supabase/templates). */
+export const EMAIL_LINK_TYPES = ["email", "signup", "recovery"] as const;
+export type EmailLinkType = (typeof EMAIL_LINK_TYPES)[number];
+
+/** A token-hash email link, as /auth/confirm forwards it to /auth/continue. */
+export const emailLinkSchema = z.object({
+  tokenHash: z.string().regex(/^[A-Za-z0-9_-]{8,200}$/),
+  type: z.enum(EMAIL_LINK_TYPES),
+});

@@ -1,7 +1,7 @@
 -- M4: group type and settings, member roles, friend requests by email,
 -- invitation preview and invitations addressed to the caller.
 begin;
-select plan(67);
+select plan(71);
 
 select tests.create_user(name) from unnest(array['alice', 'bob', 'carol', 'dave', 'erin', 'frank']) as name;
 select tests.make_group('Main', 'alice', array['bob']);
@@ -91,7 +91,12 @@ select results_eq($$ select status, friend_id from public.send_friend_request(' 
                   'a request to an exact email (any case) gets the neutral reply');
 select results_eq($$ select status from public.send_friend_request('dave@tests.local') $$,
                   $$ values ('sent'::text) $$, 'asking again gets the same reply');
-select is((select status from public.friendships where requested_by = tests.uid('carol')), 'pending', 'the request is pending');
+-- Review M9 M1: the sender sees neither the pending row nor an audit row naming
+-- the recipient, which would reveal that the address has an account.
+select is((select count(*)::int from public.friendships where requested_by = tests.uid('carol')), 0,
+          'the sender does not see the pending friendship');
+select is((select count(*)::int from public.audit_events where action = 'friend.requested'), 0,
+          'nor an audit row naming the recipient');
 select results_eq($$ select status, friend_id from public.send_friend_request('nobody@tests.local') $$,
                   $$ values ('sent'::text, null::uuid) $$, 'an unknown email gets the same reply as a known one');
 select results_eq($$ select status from public.send_friend_request('carol@tests.local') $$,
@@ -99,20 +104,22 @@ select results_eq($$ select status from public.send_friend_request('carol@tests.
 select throws_ok($$ select * from public.send_friend_request('not-an-email') $$, 'SM422', 'Invalid email address', 'an invalid email is rejected');
 
 reset role;
+select is((select status from public.friendships where requested_by = tests.uid('carol')), 'pending', 'the request is pending');
 select is((select count(*)::int from public.notifications where user_id = tests.uid('dave') and type = 'friend_request'),
           1, 'the recipient is notified once');
-
-select tests.authenticate_as('carol');
-select throws_ok(format($$ select public.accept_friend_request(%L) $$,
-                        (select id from public.friendships where requested_by = tests.uid('carol'))),
-                 'SM403', 'Only the person you asked can accept this request', 'the requester cannot accept their own request');
-select tests.authenticate_as('erin');
-select throws_ok(format($$ select public.accept_friend_request(%L) $$,
-                        (select f.id from public.friendships f where f.requested_by = tests.uid('carol'))),
-                 'SM404', 'Friend request not found', 'an outsider cannot accept (or see) the request');
-reset role;
 create temp table carol_dave as select id from public.friendships where requested_by = tests.uid('carol');
 grant select on carol_dave to authenticated;
+
+select tests.authenticate_as('carol');
+select throws_ok(format($$ select public.accept_friend_request(%L) $$, (select id from carol_dave)),
+                 'SM403', 'Only the person you asked can accept this request', 'the requester cannot accept their own request');
+select tests.authenticate_as('erin');
+select throws_ok(format($$ select public.accept_friend_request(%L) $$, (select id from carol_dave)),
+                 'SM404', 'Friend request not found', 'an outsider cannot accept (or see) the request');
+select is((select count(*)::int from public.friendships where id = (select id from carol_dave)), 0, 'or see it');
+select tests.authenticate_as('dave');
+select is((select count(*)::int from public.friendships where id = (select id from carol_dave)), 1,
+          'the recipient sees the request');
 select tests.authenticate_as('dave');
 select lives_ok(format($$ select public.accept_friend_request(%L) $$, (select id from carol_dave)),
                 'the recipient accepts');

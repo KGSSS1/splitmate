@@ -5,7 +5,7 @@ select plan(30);
 -- ---------------------------------------------------------------- coverage & privileges
 select is(
   (select count(*)::int from pg_tables where schemaname = 'public'),
-  20, 'all 19 SPEC §6 tables (exchange_rates deferred) and friend_email_requests exist');
+  21, 'all 20 SPEC §6 tables (with exchange_rates, M9) and friend_email_requests exist');
 select is(
   (select count(*)::int from pg_tables where schemaname = 'public' and not rowsecurity),
   0, 'RLS is enabled on every public table');

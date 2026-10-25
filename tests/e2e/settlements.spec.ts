@@ -105,7 +105,7 @@ test("dashboards, a confirmed repayment, a percentage expense, history, and an o
   const waiting = page.getByRole("list", { name: "Waiting for you" });
   await expect(waiting).toContainText(`${bina} paid you ₹100.00`);
   await waiting.getByRole("button", { name: `Confirm ₹100.00 from ${bina}` }).click();
-  await expect(page.getByRole("list", { name: "Waiting for you" })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Waiting for you" })).toHaveCount(0, NAVIGATION);
 
   // Step 6: A +₹500, B −₹200, C −₹300.
   await expectNet(page, "+₹500.00");
@@ -265,7 +265,7 @@ test("settle up everything with a friend; the friend rejects one part; a complet
   await expect(toConfirm).toContainText(`${asha} paid you ₹250.00`);
   await toConfirm.getByRole("button", { name: "Reject" }).click();
   await binaPage.getByRole("group", { name: /Reject this payment/ }).getByRole("button", { name: "Reject payment" }).click();
-  await expect(binaPage.getByRole("list", { name: "Waiting for you" })).toHaveCount(0);
+  await expect(binaPage.getByRole("list", { name: "Waiting for you" })).toHaveCount(0, NAVIGATION);
   await expect(binaPage.getByRole("list", { name: "Settlement history" })).toContainText("Rejected");
 
   // Asha cancels the completed ₹450: it is reversed and Bina owes ₹200 overall again.

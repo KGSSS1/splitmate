@@ -291,23 +291,23 @@ select is((select schedule || ' ' || command from cron.job where jobname = 'spli
 select tests.authenticate_as('alice');
 select tests.add_equal_expense('dinner', tests.group_id('Flat'), 'alice', 3000, array['alice', 'bob', 'carol']);
 insert into storage.objects (bucket_id, name, owner_id)
-select 'receipts', tests.expense_id('dinner') || '/r' || n || '.pdf', tests.uid('alice') from generate_series(1, 11) n;
+select 'receipts', tests.expense_id('dinner') || '/' || tests.uid('r' || n) || '.pdf', tests.uid('alice') from generate_series(1, 11) n;
 select tests.authenticate_as('bob');
 select throws_ok(
   format($$ insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes)
             values (%L, %L, %L, 'application/pdf', 1000) $$,
-         tests.expense_id('dinner'), tests.uid('bob'), tests.expense_id('dinner') || '/r11.pdf'),
+         tests.expense_id('dinner'), tests.uid('bob'), tests.expense_id('dinner') || '/' || tests.uid('r11') || '.pdf'),
   'SM422', 'Upload the file before attaching it', 'nobody can attach a file someone else uploaded');
 
 select tests.authenticate_as('alice');
 insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes, file_name)
-select tests.expense_id('dinner'), tests.uid('alice'), tests.expense_id('dinner') || '/r' || n || '.pdf',
+select tests.expense_id('dinner'), tests.uid('alice'), tests.expense_id('dinner') || '/' || tests.uid('r' || n) || '.pdf',
        'application/pdf', 1000, 'r' || n || '.pdf'
   from generate_series(1, 10) n;
 select throws_ok(
   format($$ insert into public.attachments (expense_id, uploaded_by, storage_path, mime_type, size_bytes)
             values (%L, %L, %L, 'application/pdf', 1000) $$,
-         tests.expense_id('dinner'), tests.uid('alice'), tests.expense_id('dinner') || '/r11.pdf'),
+         tests.expense_id('dinner'), tests.uid('alice'), tests.expense_id('dinner') || '/' || tests.uid('r11') || '.pdf'),
   'SM422', 'An expense can have at most 10 receipts', 'an expense has at most 10 receipts');
 select tests.authenticate_as('dave');
 select is((select count(*)::int from storage.objects where bucket_id = 'receipts'), 0,
