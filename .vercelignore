@@ -14,3 +14,8 @@
 /blob-report/
 /supabase/
 /tests/
+/scripts/
+# The Playwright configs import tests/e2e/support/, which isn't uploaded; the
+# build's type check would fail on them (seen on the M9 staging build).
+/playwright.config.ts
+/playwright.staging.config.ts
